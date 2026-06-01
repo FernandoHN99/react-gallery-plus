@@ -1,0 +1,73 @@
+{
+   "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
+
+   "assist": {
+      "actions": {
+         "source": {
+            "organizeImports": "on"
+         }
+      },
+      "enabled": true
+   },
+   "css": {
+      "parser": {
+         "tailwindDirectives": true
+      }
+   },
+   "files": {
+      "ignoreUnknown": false,
+      "includes": [
+         "**",
+         "!dist",
+         "!build",
+         "!coverage",
+         "!node_modules",
+         "!.next",
+         "!out",
+         "!src/components/ui"
+      ]
+   },
+   "formatter": {
+      "enabled": true,
+      "indentStyle": "space",
+      "indentWidth": 3,
+      "lineWidth": 80
+   },
+   "javascript": {
+      "formatter": {
+         "arrowParentheses": "always",
+         "jsxQuoteStyle": "double",
+         "quoteStyle": "single",
+         "semicolons": "asNeeded",
+         "trailingCommas": "all"
+      }
+   },
+   "json": {
+      "formatter": {
+         "trailingCommas": "none"
+      }
+   },
+   "linter": {
+      "enabled": true,
+      "rules": {
+         "correctness": {
+            "noUnusedImports": "warn",
+            "noUnusedVariables": "warn"
+         },
+         "recommended": true,
+         "style": {
+            "noNonNullAssertion": "off",
+            "useImportType": "warn"
+         },
+         "suspicious": {
+            "noExplicitAny": "warn",
+            "noArrayIndexKey": "off"
+         }
+      }
+   },
+   "vcs": {
+      "clientKind": "git",
+      "enabled": true,
+      "useIgnoreFile": true
+   }
+}
