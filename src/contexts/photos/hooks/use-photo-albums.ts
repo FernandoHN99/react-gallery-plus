@@ -1,25 +1,29 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '../../../helpers/api'
+
+interface ManagePhotoOnAlbumPayload {
+   photoId: string
+   albumsIds: string[]
+}
 
 export default function usePhotoAlbums() {
    const queryClient = useQueryClient()
 
-   async function managePhotoOnAlbum(photoId: string, albumsIds: string[]) {
-      try {
+   const managePhotoOnAlbumMutation = useMutation({
+      mutationFn: async ({ photoId, albumsIds }: ManagePhotoOnAlbumPayload) => {
          await api.put(`/photos/${photoId}/albums`, {
             albumsIds,
          })
-
+      },
+      onSuccess: (_, { photoId }) => {
          queryClient.invalidateQueries({ queryKey: ['photo', photoId] })
          queryClient.invalidateQueries({ queryKey: ['photos'] })
-
-         //  toast.success('Álbuns atualizados')
-      } catch (error) {
+      },
+      onError: () => {
          toast.error('Erro ao gerenciar álbuns da foto')
-         throw error
-      }
-   }
+      },
+   })
 
-   return { managePhotoOnAlbum }
+   return { managePhotoOnAlbumMutation }
 }

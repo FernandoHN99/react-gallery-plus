@@ -19,7 +19,7 @@ export default function usePhoto(id?: string) {
       enabled: !!id,
    })
    const queryClient = useQueryClient()
-   const { managePhotoOnAlbum } = usePhotoAlbums()
+   const { managePhotoOnAlbumMutation } = usePhotoAlbums()
 
    const createPhotoMutation = useMutation({
       mutationFn: async (payload: PhotoNewFormSchema) => {
@@ -34,7 +34,7 @@ export default function usePhoto(id?: string) {
          )
 
          if (payload.albumsIds && payload.albumsIds.length > 0) {
-            await managePhotoOnAlbum(photo.id, payload.albumsIds)
+            await managePhotoOnAlbumMutation.mutateAsync({ photoId: photo.id, albumsIds: payload.albumsIds })
          }
       },
       onSuccess: () => {
@@ -46,8 +46,8 @@ export default function usePhoto(id?: string) {
       },
    })
 
-   async function updatePhoto({ photoId, title, albumsIds }: photoEditSchema) {
-      try {
+   const updatePhotoMutation = useMutation({
+      mutationFn: async ({ photoId, title, albumsIds }: photoEditSchema) => {
          const originalAlbumsIds = data?.albums?.map((a) => a.id) ?? []
          const titleChanged = title !== data?.title
          const albumsChanged =
@@ -55,30 +55,30 @@ export default function usePhoto(id?: string) {
             albumsIds.some((id) => !originalAlbumsIds.includes(id))
 
          if (titleChanged) await api.patch(`/photos/${photoId}`, { title })
-         if (albumsChanged) await managePhotoOnAlbum(photoId, albumsIds)
-
+         if (albumsChanged) await managePhotoOnAlbumMutation.mutateAsync({ photoId, albumsIds })
+      },
+      onSuccess: (_, { photoId }) => {
          queryClient.invalidateQueries({ queryKey: ['photo', photoId] })
          queryClient.invalidateQueries({ queryKey: ['photos'] })
-
          toast.success('Foto atualizada com sucesso')
-      } catch (error) {
+      },
+      onError: () => {
          toast.error('Erro ao atualizar foto')
-         throw error
-      }
-   }
+      },
+   })
 
-   async function deletePhoto(photoId: string) {
-      try {
+   const deletePhotoMutation = useMutation({
+      mutationFn: async (photoId: string) => {
          await api.delete(`/photos/${photoId}`)
-
+      },
+      onSuccess: () => {
          toast.success('Foto excluída com sucesso')
-
          navigate('/')
-      } catch (error) {
+      },
+      onError: () => {
          toast.error('Erro ao excluir foto')
-         throw error
-      }
-   }
+      },
+   })
 
    return {
       photo: data,
@@ -86,7 +86,7 @@ export default function usePhoto(id?: string) {
       previousPhotoId: data?.previousPhotoId,
       isLoadingPhoto: isLoading,
       createPhotoMutation,
-      updatePhoto,
-      deletePhoto,
+      updatePhotoMutation,
+      deletePhotoMutation,
    }
 }

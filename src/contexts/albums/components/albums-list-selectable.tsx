@@ -26,8 +26,7 @@ export default function AlbumsListSelectable({
    selectedAlbumsIds,
    onAlbumToggle,
 }: AlbumsListSelectableProps) {
-   const { managePhotoOnAlbum } = usePhotoAlbums()
-   const [isUpdatingPhoto, setIsUpdatingPhoto] = React.useTransition()
+    const { managePhotoOnAlbumMutation } = usePhotoAlbums()
 
    function isChecked(albumId: string) {
       if (editMode && selectedAlbumsIds) {
@@ -36,26 +35,24 @@ export default function AlbumsListSelectable({
       return photo?.albums?.some((album) => album.id === albumId)
    }
 
-   async function handlePhotoOnAlbums(albumId: string) {
-      if (editMode && onAlbumToggle) {
-         onAlbumToggle(albumId)
-         return
-      }
+    function handlePhotoOnAlbums(albumId: string) {
+       if (editMode && onAlbumToggle) {
+          onAlbumToggle(albumId)
+          return
+       }
 
-      let albumsIds = []
+       let albumsIds = []
 
-      if (isChecked(albumId)) {
-         albumsIds = photo.albums
-            .filter((album) => album.id !== albumId)
-            .map((album) => album.id)
-      } else {
-         albumsIds = [...photo.albums.map((album) => album.id), albumId]
-      }
+       if (isChecked(albumId)) {
+          albumsIds = photo.albums
+             .filter((album) => album.id !== albumId)
+             .map((album) => album.id)
+       } else {
+          albumsIds = [...photo.albums.map((album) => album.id), albumId]
+       }
 
-      setIsUpdatingPhoto(async () => {
-         await managePhotoOnAlbum(photo.id, albumsIds)
-      })
-   }
+       managePhotoOnAlbumMutation.mutate({ photoId: photo.id, albumsIds })
+    }
 
    return (
       <ul className="flex flex-col gap-4">
@@ -68,11 +65,11 @@ export default function AlbumsListSelectable({
                      <Text variant="paragraph-large" className="truncate">
                         {album.title}
                      </Text>
-                     <InputCheckbox
-                        checked={isChecked(album.id)}
-                        onChange={() => handlePhotoOnAlbums(album.id)}
-                        disabled={isUpdatingPhoto || disable}
-                     />
+                      <InputCheckbox
+                         checked={isChecked(album.id)}
+                         onChange={() => handlePhotoOnAlbums(album.id)}
+                         disabled={managePhotoOnAlbumMutation.isPending || disable}
+                      />
                   </div>
                   {index !== albums.length - 1 && <Divider className="mt-4" />}
                </li>

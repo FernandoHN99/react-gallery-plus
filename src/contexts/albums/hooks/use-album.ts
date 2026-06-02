@@ -9,7 +9,7 @@ import type { AlbumNewFormSchema } from '../schemas'
 export default function useAlbum() {
    const queryClient = useQueryClient()
    const { photos } = usePhotos()
-   const { managePhotoOnAlbum } = usePhotoAlbums()
+   const { managePhotoOnAlbumMutation } = usePhotoAlbums()
 
    const createAlbumMutation = useMutation({
       mutationFn: async (payload: AlbumNewFormSchema) => {
@@ -17,20 +17,20 @@ export default function useAlbum() {
             title: payload.title,
          })
 
-         if (payload.photosIds && payload.photosIds.length > 0) {
-            await Promise.all(
-               payload.photosIds.map((photoId) => {
-                  const photoAlbumsIds =
-                     photos
-                        .find((photo) => photo.id === photoId)
-                        ?.albums.map((album) => album.id) || []
-                  return managePhotoOnAlbum(photoId, [
-                     ...photoAlbumsIds,
-                     album.id,
-                  ])
-               }),
-            )
-         }
+          if (payload.photosIds && payload.photosIds.length > 0) {
+             await Promise.all(
+                payload.photosIds.map((photoId) => {
+                   const photoAlbumsIds =
+                      photos
+                         .find((photo) => photo.id === photoId)
+                         ?.albums.map((album) => album.id) || []
+                   return managePhotoOnAlbumMutation.mutateAsync({
+                      photoId,
+                      albumsIds: [...photoAlbumsIds, album.id],
+                   })
+                }),
+             )
+          }
       },
       onSuccess: () => {
          queryClient.invalidateQueries({ queryKey: ['albums'] })

@@ -20,13 +20,11 @@ export default function PagePhotoDetails() {
       isLoadingPhoto,
       previousPhotoId,
       nextPhotoId,
-      deletePhoto,
-      updatePhoto,
+      deletePhotoMutation,
+      updatePhotoMutation,
    } = usePhoto(id)
    const { albums, isLoadingAlbums } = useAlbums()
    const [editPhotoMode, setEditPhotoMode] = React.useState(false)
-   const [isDeletingPhoto, setIsDeletingPhoto] = React.useTransition()
-   const [isSavingPhoto, setIsSavingPhoto] = React.useTransition()
 
    const {
       editedTitle,
@@ -48,24 +46,20 @@ export default function PagePhotoDetails() {
       setEditPhotoMode(false)
    }
 
-   function handleSavePhoto() {
-      if (!isTitleValid) return
+    async function handleSavePhoto() {
+       if (!isTitleValid) return
 
-      setIsSavingPhoto(async () => {
-         await updatePhoto({
-            photoId: photo!.id,
-            title: editedTitle,
-            albumsIds: selectedAlbumsIds,
-         })
-         setEditPhotoMode(false)
-      })
-   }
+       await updatePhotoMutation.mutateAsync({
+          photoId: photo!.id,
+          title: editedTitle,
+          albumsIds: selectedAlbumsIds,
+       })
+       setEditPhotoMode(false)
+    }
 
-   function handleDeletePhoto() {
-      setIsDeletingPhoto(async () => {
-         await deletePhoto(photo!.id)
-      })
-   }
+    function handleDeletePhoto() {
+       deletePhotoMutation.mutate(photo!.id)
+    }
 
    if (!isLoadingPhoto && !photo) {
       return <div>Foto não encontrada</div>
@@ -122,36 +116,36 @@ export default function PagePhotoDetails() {
 
                {!isLoadingPhoto ? (
                   <div className="flex items-center justify-start gap-3">
-                     <Button
-                        variant={!editPhotoMode ? 'primary' : 'ghost'}
-                        onClick={
-                           !editPhotoMode
-                              ? handleEditPhotoMode
-                              : handleCancelEdit
-                        }
-                        disabled={isDeletingPhoto || isSavingPhoto}
-                     >
-                        {!editPhotoMode ? 'Editar' : 'Cancelar'}
-                     </Button>
-                     {editPhotoMode ? (
-                        <Button
-                           variant="primary"
-                           onClick={handleSavePhoto}
-                           disabled={
-                              !isTitleValid || !hasChanges || isSavingPhoto
-                           }
-                        >
-                           {isSavingPhoto ? 'Salvando...' : 'Salvar'}
-                        </Button>
-                     ) : (
-                        <Button
-                           variant="destructive"
-                           onClick={handleDeletePhoto}
-                           disabled={isDeletingPhoto}
-                        >
-                           {isDeletingPhoto ? 'Excluindo...' : 'Excluir'}
-                        </Button>
-                     )}
+                      <Button
+                         variant={!editPhotoMode ? 'primary' : 'ghost'}
+                         onClick={
+                            !editPhotoMode
+                               ? handleEditPhotoMode
+                               : handleCancelEdit
+                         }
+                         disabled={deletePhotoMutation.isPending || updatePhotoMutation.isPending}
+                      >
+                         {!editPhotoMode ? 'Editar' : 'Cancelar'}
+                      </Button>
+                      {editPhotoMode ? (
+                         <Button
+                            variant="primary"
+                            onClick={handleSavePhoto}
+                            disabled={
+                               !isTitleValid || !hasChanges || updatePhotoMutation.isPending
+                            }
+                         >
+                            {updatePhotoMutation.isPending ? 'Salvando...' : 'Salvar'}
+                         </Button>
+                      ) : (
+                         <Button
+                            variant="destructive"
+                            onClick={handleDeletePhoto}
+                            disabled={deletePhotoMutation.isPending}
+                         >
+                            {deletePhotoMutation.isPending ? 'Excluindo...' : 'Excluir'}
+                         </Button>
+                      )}
                   </div>
                ) : (
                   <Skeleton className="w-20 h-10" />
@@ -162,15 +156,15 @@ export default function PagePhotoDetails() {
                <Text as="h3" variant="heading-medium" className="mb-6">
                   Álbuns
                </Text>
-               <AlbumsListSelectable
-                  photo={photo as Photo}
-                  albums={albums}
-                  loading={isLoadingAlbums}
-                  disable={!editPhotoMode || isSavingPhoto}
-                  editMode={editPhotoMode}
-                  selectedAlbumsIds={selectedAlbumsIds}
-                  onAlbumToggle={handleAlbumToggle}
-               />
+                <AlbumsListSelectable
+                   photo={photo as Photo}
+                   albums={albums}
+                   loading={isLoadingAlbums}
+                   disable={!editPhotoMode || updatePhotoMutation.isPending}
+                   editMode={editPhotoMode}
+                   selectedAlbumsIds={selectedAlbumsIds}
+                   onAlbumToggle={handleAlbumToggle}
+                />
             </div>
          </div>
       </Container>
