@@ -30,8 +30,7 @@ export default function AlbumNewDialog({ trigger }: AlbumNewDialogProps) {
       resolver: zodResolver(albumNewFormSchema),
    })
    const { photos, isLoadingPhotos } = usePhotos()
-   const { createAlbum } = useAlbum()
-   const [isCreatingAlbum, setIsCreatingAlbum] = React.useTransition()
+   const { createAlbumMutation } = useAlbum()
 
    function handleTogglePhoto(selected: boolean, photoId: string) {
       const photosIds = form.getValues('photosIds') || []
@@ -46,11 +45,9 @@ export default function AlbumNewDialog({ trigger }: AlbumNewDialogProps) {
       form.setValue('photosIds', newValue)
    }
 
-   function handleSubmit(payload: AlbumNewFormSchema) {
-      setIsCreatingAlbum(async () => {
-         await createAlbum(payload)
-         setModalOpen(false)
-      })
+   async function handleSubmit(payload: AlbumNewFormSchema) {
+      await createAlbumMutation.mutateAsync(payload)
+      setModalOpen(false)
    }
 
    React.useEffect(() => {
@@ -123,16 +120,19 @@ export default function AlbumNewDialog({ trigger }: AlbumNewDialogProps) {
 
                <DialogFooter>
                   <DialogClose asChild>
-                     <Button variant="secondary" disabled={isCreatingAlbum}>
+                     <Button
+                        variant="secondary"
+                        disabled={createAlbumMutation.isPending}
+                     >
                         Cancelar
                      </Button>
                   </DialogClose>
                   <Button
                      type="submit"
-                     handling={isCreatingAlbum}
-                     disabled={isCreatingAlbum}
+                     handling={createAlbumMutation.isPending}
+                     disabled={createAlbumMutation.isPending}
                   >
-                     {isCreatingAlbum ? 'Criando' : 'Criar'}
+                     {createAlbumMutation.isPending ? 'Criando' : 'Criar'}
                   </Button>
                </DialogFooter>
             </form>

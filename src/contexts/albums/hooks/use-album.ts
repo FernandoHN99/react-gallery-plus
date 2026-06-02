@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '../../../helpers/api'
 import usePhotoAlbums from '../../photos/hooks/use-photo-albums'
@@ -11,8 +11,8 @@ export default function useAlbum() {
    const { photos } = usePhotos()
    const { managePhotoOnAlbum } = usePhotoAlbums()
 
-   async function createAlbum(payload: AlbumNewFormSchema) {
-      try {
+   const createAlbumMutation = useMutation({
+      mutationFn: async (payload: AlbumNewFormSchema) => {
          const { data: album } = await api.post<Album>('/albums', {
             title: payload.title,
          })
@@ -31,17 +31,18 @@ export default function useAlbum() {
                }),
             )
          }
-
+      },
+      onSuccess: () => {
          queryClient.invalidateQueries({ queryKey: ['albums'] })
          queryClient.invalidateQueries({ queryKey: ['photos'] })
          toast.success('Álbum criado com sucesso')
-      } catch (error) {
+      },
+      onError: () => {
          toast.error('Erro ao criar álbum')
-         throw error
-      }
-   }
+      },
+   })
 
    return {
-      createAlbum,
+      createAlbumMutation,
    }
 }
