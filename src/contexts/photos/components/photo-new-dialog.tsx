@@ -32,8 +32,7 @@ export default function PhotoNewDialog({ trigger }: PhotoNewDialogProps) {
    })
 
    const { albums, isLoadingAlbums } = useAlbums()
-   const { createPhoto } = usePhoto()
-   const [isCreatingPhoto, setIsCreatingPhoto] = React.useTransition()
+   const { createPhotoMutation } = usePhoto()
 
    const file = form.watch('file')
    const fileSrc = file?.[0] ? URL.createObjectURL(file[0]) : undefined
@@ -46,11 +45,9 @@ export default function PhotoNewDialog({ trigger }: PhotoNewDialogProps) {
       }
    }, [modalOpen, form])
 
-   function handleSubmit(payload: PhotoNewFormSchema) {
-      setIsCreatingPhoto(async () => {
-         await createPhoto(payload)
-         setModalOpen(false)
-      })
+   async function handleSubmit(payload: PhotoNewFormSchema) {
+      await createPhotoMutation.mutateAsync(payload)
+      setModalOpen(false)
    }
 
    function handleToggleAlbum(albumId: string) {
@@ -133,16 +130,16 @@ export default function PhotoNewDialog({ trigger }: PhotoNewDialogProps) {
 
                <DialogFooter>
                   <DialogClose asChild>
-                     <Button variant="secondary" disabled={isCreatingPhoto}>
+                     <Button variant="secondary" disabled={createPhotoMutation.isPending}>
                         Cancelar
                      </Button>
                   </DialogClose>
                   <Button
                      type="submit"
-                     disabled={isCreatingPhoto}
-                     handling={isCreatingPhoto}
+                     disabled={createPhotoMutation.isPending}
+                     handling={createPhotoMutation.isPending}
                   >
-                     {isCreatingPhoto ? 'Adicionando' : 'Adicionar'}
+                     {createPhotoMutation.isPending ? 'Adicionando' : 'Adicionar'}
                   </Button>
                </DialogFooter>
             </form>

@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { api, fetcher } from '../../../helpers/api'
@@ -21,36 +21,30 @@ export default function usePhoto(id?: string) {
    const queryClient = useQueryClient()
    const { managePhotoOnAlbum } = usePhotoAlbums()
 
-   async function createPhoto(payload: PhotoNewFormSchema) {
-      try {
+   const createPhotoMutation = useMutation({
+      mutationFn: async (payload: PhotoNewFormSchema) => {
          const { data: photo } = await api.post<Photo>('/photos', {
             title: payload.title,
          })
 
          await api.post(
             `/photos/${photo.id}/image`,
-            {
-               file: payload.file[0],
-            },
-            {
-               headers: {
-                  'Content-Type': 'multipart/form-data',
-               },
-            },
+            { file: payload.file[0] },
+            { headers: { 'Content-Type': 'multipart/form-data' } },
          )
 
          if (payload.albumsIds && payload.albumsIds.length > 0) {
             await managePhotoOnAlbum(photo.id, payload.albumsIds)
          }
-
+      },
+      onSuccess: () => {
          queryClient.invalidateQueries({ queryKey: ['photos'] })
-
-         toast.success('Foto crida com sucesso')
-      } catch (error) {
-         toast.success('Erro ao criar foto')
-         throw error
-      }
-   }
+         toast.success('Foto criada com sucesso')
+      },
+      onError: () => {
+         toast.error('Erro ao criar foto')
+      },
+   })
 
    async function updatePhoto({ photoId, title, albumsIds }: photoEditSchema) {
       try {
@@ -91,7 +85,7 @@ export default function usePhoto(id?: string) {
       nextPhotoId: data?.nextPhotoId,
       previousPhotoId: data?.previousPhotoId,
       isLoadingPhoto: isLoading,
-      createPhoto,
+      createPhotoMutation,
       updatePhoto,
       deletePhoto,
    }
