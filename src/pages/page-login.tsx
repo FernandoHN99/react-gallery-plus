@@ -1,0 +1,90 @@
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { useLocation, useNavigate } from 'react-router'
+import { toast } from 'sonner'
+import Logo from '../assets/images/galeria-plus-full-logo.svg?react'
+import Button from '../components/button'
+import InputText from '../components/input-text'
+import Text from '../components/text'
+import useLogin from '../contexts/auth/hooks/use-login'
+import { type LoginFormSchema, loginFormSchema } from '../contexts/auth/schemas'
+import { MOCK_CREDENTIALS } from '../contexts/auth/services/auth-service'
+
+export default function PageLogin() {
+   const navigate = useNavigate()
+   const location = useLocation()
+   const { login, isLoggingIn } = useLogin()
+
+   const from = (location.state?.from?.pathname as string) ?? '/'
+
+   const {
+      register,
+      handleSubmit,
+      formState: { errors },
+   } = useForm<LoginFormSchema>({
+      resolver: zodResolver(loginFormSchema),
+   })
+
+   async function onSubmit(data: LoginFormSchema) {
+      try {
+         await login(data)
+         navigate(from, { replace: true })
+      } catch {
+         toast.error('E-mail ou senha inválidos')
+      }
+   }
+
+   return (
+      <div className="flex min-h-screen items-center justify-center">
+         <div className="flex w-full max-w-sm flex-col items-center gap-8 px-4">
+            <Logo className="h-6" />
+
+            <form
+               onSubmit={handleSubmit(onSubmit)}
+               className="flex w-full flex-col gap-4"
+            >
+               <div className="flex flex-col gap-1">
+                  <Text variant="label-small" className="text-accent-paragraph">
+                     E-mail
+                  </Text>
+                  <InputText
+                     type="email"
+                     placeholder="admin@gallery.com"
+                     error={errors.email?.message}
+                     {...register('email')}
+                  />
+               </div>
+
+               <div className="flex flex-col gap-1">
+                  <Text variant="label-small" className="text-accent-paragraph">
+                     Senha
+                  </Text>
+                  <InputText
+                     type="password"
+                     placeholder="••••••"
+                     error={errors.password?.message}
+                     {...register('password')}
+                  />
+               </div>
+
+               <Button
+                  type="submit"
+                  className="mt-2 w-full"
+                  handling={isLoggingIn}
+                  disabled={isLoggingIn}
+               >
+                  Entrar
+               </Button>
+            </form>
+
+            <Text
+               variant="paragraph-small"
+               className="text-center text-placeholder"
+            >
+               Use <strong>{MOCK_CREDENTIALS.email}</strong> /{' '}
+               <strong>{MOCK_CREDENTIALS.password}</strong>
+            </Text>
+         </div>
+      </div>
+   )
+}
