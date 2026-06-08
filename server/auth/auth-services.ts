@@ -25,4 +25,9 @@ export class AuthService {
 
       return user
    }
+
+   async findById(id: string): Promise<User | undefined> {
+      const db = await this.dbService.readDatabase()
+      return db.users.find((u) => u.id === id)
+   }
 }

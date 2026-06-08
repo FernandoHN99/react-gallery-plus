@@ -32,11 +32,19 @@ const start = async () => {
          expiresIn: '10m',
       },
    })
-   fastify.register(fastifyCookie)
+   await fastify.register(fastifyCookie)
 
    await fastify.register(import('@fastify/cors'), {
       credentials: true,
-      origin: '*',
+      // origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: (origin, cb) => {
+         if (!origin) {
+            cb(new Error('Origin must be provided'), false)
+            return
+         }
+
+         cb(null, true)
+      },
       methods: ['GET', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
    })
