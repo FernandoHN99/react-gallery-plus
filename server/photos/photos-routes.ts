@@ -1,6 +1,7 @@
 import type { MultipartFile } from '@fastify/multipart'
 import type { FastifyInstance } from 'fastify'
 import { ZodError } from 'zod'
+import { verifyJwt } from '../auth/verify-jwt.ts'
 import {
    createPhotoSchema,
    managePhotoAlbumsSchema,
@@ -15,26 +16,30 @@ export async function photosRoutes(
    photosService: PhotosService,
 ) {
    // GET /photos - with optional album filter
-   fastify.get('/photos', async (request, reply) => {
-      try {
-         const queryResult = photoQuerySchema.safeParse(request.query)
+   fastify.get(
+      '/photos',
+      { onRequest: [verifyJwt] },
+      async (request, reply) => {
+         try {
+            const queryResult = photoQuerySchema.safeParse(request.query)
 
-         if (!queryResult.success) {
-            reply.status(400).send({
-               error: 'Invalid query parameters',
-               details: queryResult.error.errors,
-            })
-            return
+            if (!queryResult.success) {
+               reply.status(400).send({
+                  error: 'Invalid query parameters',
+                  details: queryResult.error.errors,
+               })
+               return
+            }
+
+            const { albumId, q } = queryResult.data
+            const photos = await photosService.getAllPhotos(albumId, q)
+            reply.send(photos)
+         } catch (error) {
+            console.error('Error getting photos:', error)
+            reply.status(500).send({ error: 'Failed to get photos' })
          }
-
-         const { albumId, q } = queryResult.data
-         const photos = await photosService.getAllPhotos(albumId, q)
-         reply.send(photos)
-      } catch (error) {
-         console.error('Error getting photos:', error)
-         reply.status(500).send({ error: 'Failed to get photos' })
-      }
-   })
+      },
+   )
 
    // GET /photos/:id
    fastify.get('/photos/:id', async (request, reply) => {
