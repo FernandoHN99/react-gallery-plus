@@ -29,6 +29,7 @@ export class DatabaseService {
             photos: [],
             albums: [],
             photosOnAlbums: [],
+            users: [],
          }
          await this.writeDatabase(initialData)
       }
@@ -44,6 +45,7 @@ export class DatabaseService {
             photos: [],
             albums: [],
             photosOnAlbums: [],
+            users: [],
          }
          await this.writeDatabase(emptyDb)
          return emptyDb

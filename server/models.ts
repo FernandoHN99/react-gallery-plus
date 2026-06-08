@@ -15,8 +15,16 @@ export interface PhotoOnAlbum {
    albumId: string
 }
 
+export interface User {
+   id: string
+   email: string
+   passwordHash: string
+   createdAt: string
+}
+
 export interface Database {
    photos: Photo[]
    albums: Album[]
    photosOnAlbums: PhotoOnAlbum[]
+   users: User[]
 }
