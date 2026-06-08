@@ -29,7 +29,7 @@ export async function authRoutes(
                path: '/',
                sameSite: true,
                httpOnly: true,
-               maxAge: 7 * 86400,
+               maxAge: 7 * 60 * 60 * 24,
             })
             .status(200)
             .send({ token })
@@ -63,10 +63,7 @@ export async function authRoutes(
 
    // POST /auth/logout
    fastify.post('/auth/logout', async (_, reply) => {
-      return reply
-         .clearCookie('refreshToken', { path: '/' })
-         .status(204)
-         .send()
+      return reply.clearCookie('refreshToken', { path: '/' }).status(204).send()
    })
 
    // GET /auth/me
@@ -78,7 +75,9 @@ export async function authRoutes(
 
          const user = await authService.findById(sub)
          if (!user) {
-            return reply.status(404).send({ message: 'Usuário não encontrado.' })
+            return reply
+               .status(404)
+               .send({ message: 'Usuário não encontrado.' })
          }
 
          return reply.status(200).send({ id: user.id, email: user.email })
