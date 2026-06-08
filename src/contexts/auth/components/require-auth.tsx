@@ -13,6 +13,8 @@ export default function RequireAuth() {
       )
    }
 
+   console.log('isAuthenticated: ', isAuthenticated)
+
    if (!isAuthenticated) {
       return <Navigate to="/login" state={{ from: location }} replace />
    }
