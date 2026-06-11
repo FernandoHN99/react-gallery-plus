@@ -1,4 +1,4 @@
-import { api } from '../../../helpers/api'
+import { api, fetcher } from '../../../helpers/api'
 import type { User } from '../models/user'
 export const MOCK_CREDENTIALS = {
    email: 'admin@gallery.com',
@@ -7,11 +7,13 @@ export const MOCK_CREDENTIALS = {
 
 let accessToken: string | null = null
 
+export function getAccessToken(): string | null {
+   return accessToken
+}
+
 async function fetchMe(): Promise<User> {
    try {
-      const { data } = await api.get<User>('/auth/me', {
-         headers: { Authorization: `Bearer ${accessToken}` },
-      })
+      const data = await fetcher('/auth/me')
       return data
    } catch (error) {
       accessToken = null
@@ -39,6 +41,7 @@ export const authService = {
             const { data } = await api.post<{ token: string }>('/auth/refresh')
             accessToken = data.token
          } catch (error) {
+            console.error('error: ', error)
             accessToken = null
             throw error
          }

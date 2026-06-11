@@ -22,10 +22,10 @@ const start = async () => {
 
    await fastify.register(fastifyJwt, {
       secret: env.JWT_SECRET,
-      cookie: {
-         cookieName: 'refreshToken',
-         signed: false,
-      },
+      // cookie: {
+      //    cookieName: 'refreshToken',
+      //    signed: false,
+      // },
       // expiresIn é o tempo de expiração do token, assim quando o token de autenticação é emitido dentro dele é salvo a data de emissão
       // e portanto quando o backend for acessado novamente, ele verifica se o token está dentro do tempo de expiração no caso 10 minutos
       sign: {
@@ -36,15 +36,15 @@ const start = async () => {
 
    await fastify.register(import('@fastify/cors'), {
       credentials: true,
-      // origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
-      origin: (origin, cb) => {
-         if (!origin) {
-            cb(new Error('Origin must be provided'), false)
-            return
-         }
+      origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+      //   origin: (origin, cb) => {
+      //      if (!origin) {
+      //         cb(new Error('Origin must be provided'), false)
+      //         return
+      //      }
 
-        cb(null, true)
-      },
+      //      cb(null, true)
+      //   },
       methods: ['GET', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
    })

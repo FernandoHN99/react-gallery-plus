@@ -1,5 +1,8 @@
 import axios, { type AxiosRequestConfig } from 'axios'
-import { clearAccessToken } from '../contexts/auth/services/auth-service'
+import {
+   clearAccessToken,
+   getAccessToken,
+} from '../contexts/auth/services/auth-service'
 
 export const api = axios.create({
    baseURL: import.meta.env.VITE_API_URL,
@@ -8,6 +11,14 @@ export const api = axios.create({
 
 export const fetcher = (url: string, options: AxiosRequestConfig = {}) =>
    api.get(url, options).then((res) => res.data)
+
+api.interceptors.request.use((config) => {
+   const token = getAccessToken()
+   if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+   }
+   return config
+})
 
 let isRedirecting = false
 

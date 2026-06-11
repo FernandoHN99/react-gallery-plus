@@ -72,3 +72,11 @@ Biome is the formatter and secondary linter (3-space indent, single quotes, no s
 ESLint handles React-specific rules. Both are active — run `pnpm lint` for ESLint; Biome runs via editor/CI.
 
 Biome ignores `src/components/ui/`.
+
+## Important Constraints
+
+**🚫 NEVER commit without user authorization.**
+- Stage files as needed
+- Show user the changes with `git diff` or `git status`
+- Wait for explicit approval before running `git commit`
+- If you've already committed, immediately undo with `git reset --soft HEAD~1` and `git reset HEAD`
