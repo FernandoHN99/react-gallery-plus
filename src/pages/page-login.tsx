@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -16,6 +17,14 @@ export default function PageLogin() {
    const { login, isLoggingIn } = useLogin()
 
    const from = (location.state?.from?.pathname as string) ?? '/'
+
+   useEffect(() => {
+      const sessionExpired = sessionStorage.getItem('sessionExpired')
+      if (sessionExpired) {
+         toast.error('Sessão expirada. Por favor, faça login novamente.')
+         sessionStorage.removeItem('sessionExpired')
+      }
+   }, [])
 
    const {
       register,
@@ -52,6 +61,7 @@ export default function PageLogin() {
                      placeholder="admin@gallery.com"
                      error={errors.email?.message}
                      {...register('email')}
+                     value="admin@gallery.com"
                   />
                </div>
 
@@ -64,6 +74,7 @@ export default function PageLogin() {
                      placeholder="••••••"
                      error={errors.password?.message}
                      {...register('password')}
+                     value="123456"
                   />
                </div>
 

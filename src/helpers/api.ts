@@ -1,4 +1,5 @@
 import axios, { type AxiosRequestConfig } from 'axios'
+import { clearAccessToken } from '../contexts/auth/services/auth-service'
 
 export const api = axios.create({
    baseURL: import.meta.env.VITE_API_URL,
@@ -7,3 +8,18 @@ export const api = axios.create({
 
 export const fetcher = (url: string, options: AxiosRequestConfig = {}) =>
    api.get(url, options).then((res) => res.data)
+
+let isRedirecting = false
+
+api.interceptors.response.use(
+   (response) => response,
+   (error) => {
+      if (error.response?.status === 401 && !isRedirecting) {
+         isRedirecting = true
+         clearAccessToken()
+         sessionStorage.setItem('sessionExpired', 'true')
+         window.location.href = '/login'
+      }
+      return Promise.reject(error)
+   },
+)

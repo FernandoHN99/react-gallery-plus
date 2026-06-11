@@ -8,10 +8,19 @@ export const MOCK_CREDENTIALS = {
 let accessToken: string | null = null
 
 async function fetchMe(): Promise<User> {
-   const { data } = await api.get<User>('/auth/me', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-   })
-   return data
+   try {
+      const { data } = await api.get<User>('/auth/me', {
+         headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      return data
+   } catch (error) {
+      accessToken = null
+      throw error
+   }
+}
+
+export function clearAccessToken() {
+   accessToken = null
 }
 
 export const authService = {
@@ -26,8 +35,13 @@ export const authService = {
 
    async getSession(): Promise<User> {
       if (!accessToken) {
-         const { data } = await api.post<{ token: string }>('/auth/refresh')
-         accessToken = data.token
+         try {
+            const { data } = await api.post<{ token: string }>('/auth/refresh')
+            accessToken = data.token
+         } catch (error) {
+            accessToken = null
+            throw error
+         }
       }
       return fetchMe()
    },

@@ -43,7 +43,7 @@ const start = async () => {
             return
          }
 
-         cb(null, true)
+        cb(null, true)
       },
       methods: ['GET', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],

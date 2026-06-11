@@ -15,6 +15,7 @@ export default function useSession() {
    return {
       user: query.data ?? null,
       isLoadingSession: query.isPending,
-      isAuthenticated: query.isSuccess && query.data.id != null,
+      isAuthenticated: query.isSuccess && !!query.data?.id,
+      isError: query.isError,
    }
 }

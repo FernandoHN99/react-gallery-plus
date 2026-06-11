@@ -2,7 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router'
 import useSession from '../hooks/use-session'
 
 export default function RequireAuth() {
-   const { isAuthenticated, isLoadingSession } = useSession()
+   const { isAuthenticated, isLoadingSession, isError } = useSession()
    const location = useLocation()
 
    if (isLoadingSession) {
@@ -13,7 +13,10 @@ export default function RequireAuth() {
       )
    }
 
-   console.log('isAuthenticated: ', isAuthenticated)
+   if (isError) {
+      sessionStorage.setItem('sessionExpired', 'true')
+      return <Navigate to="/login" state={{ from: location }} replace />
+   }
 
    if (!isAuthenticated) {
       return <Navigate to="/login" state={{ from: location }} replace />
