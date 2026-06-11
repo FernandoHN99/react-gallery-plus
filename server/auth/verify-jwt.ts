@@ -7,6 +7,9 @@ export async function verifyJwt(request: FastifyRequest, reply: FastifyReply) {
       // A própria função jwtVerify() já lança um erro caso o token seja inválido
       await request.jwtVerify()
    } catch {
-      return reply.status(401).send({ message: 'Unauthorized.' })
+      return reply.status(401).send({
+         code: 'TOKEN_EXPIRED',
+         message: 'Access token expirado ou inválido',
+      })
    }
 }

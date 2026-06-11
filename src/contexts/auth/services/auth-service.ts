@@ -11,6 +11,10 @@ export function getAccessToken(): string | null {
    return accessToken
 }
 
+export function setAccessToken(token: string) {
+   accessToken = token
+}
+
 async function fetchMe(): Promise<User> {
    try {
       const data = await fetcher('/auth/me')
@@ -36,16 +40,8 @@ export const authService = {
    },
 
    async getSession(): Promise<User> {
-      if (!accessToken) {
-         try {
-            const { data } = await api.post<{ token: string }>('/auth/refresh')
-            accessToken = data.token
-         } catch (error) {
-            console.error('error: ', error)
-            accessToken = null
-            throw error
-         }
-      }
+      // O interceptor cuidará do refresh automático se accessToken expirou
+      // Aqui apenas retorna a sessão atual
       return fetchMe()
    },
 

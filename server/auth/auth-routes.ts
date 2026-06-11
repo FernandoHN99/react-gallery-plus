@@ -50,14 +50,29 @@ export async function authRoutes(
 
          const user = await authService.findById(sub)
          if (!user) {
-            return reply.status(401).send({ message: 'Unauthorized.' })
+            return reply.status(401).send({
+               code: 'INVALID_REFRESH_TOKEN',
+               message: 'Usuário não encontrado',
+            })
          }
 
          const token = await reply.jwtSign({}, { sign: { sub: user.id } })
 
          return reply.status(200).send({ token })
-      } catch {
-         return reply.status(401).send({ message: 'Unauthorized.' })
+      } catch (error) {
+         // Se o erro é de token expirado
+         if (error instanceof Error && error.message.includes('expired')) {
+            return reply.status(401).send({
+               code: 'REFRESH_TOKEN_EXPIRED',
+               message: 'Refresh token expirado. Faça login novamente.',
+            })
+         }
+
+         // Qualquer outro erro de JWT (malformado, inválido, etc)
+         return reply.status(401).send({
+            code: 'INVALID_REFRESH_TOKEN',
+            message: 'Refresh token inválido',
+         })
       }
    })
 
