@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { ZodError } from 'zod'
-import { verifyJwt } from '../auth/verify-jwt'
+import { verifyJwtAccessToken } from '../auth/verify-jwt'
 import { albumParamsSchema, createAlbumSchema } from './albums-interfaces'
 import type { AlbumsService } from './albums-service'
 
@@ -9,7 +9,7 @@ export async function albumsRoutes(
    albumsService: AlbumsService,
 ) {
    // GET /albums
-   fastify.get('/albums', { onRequest: [verifyJwt] }, async (_, reply) => {
+   fastify.get('/albums', { onRequest: [verifyJwtAccessToken] }, async (_, reply) => {
       try {
          const albums = await albumsService.getAllAlbums()
          reply.send(albums)
@@ -22,7 +22,7 @@ export async function albumsRoutes(
    // GET /albums/:id
    fastify.get(
       '/albums/:id',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const paramsResult = albumParamsSchema.safeParse(request.params)
@@ -54,7 +54,7 @@ export async function albumsRoutes(
    // POST /albums
    fastify.post(
       '/albums',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const bodyResult = createAlbumSchema.safeParse(request.body)
@@ -88,7 +88,7 @@ export async function albumsRoutes(
    // DELETE /albums/:id
    fastify.delete(
       '/albums/:id',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const paramsResult = albumParamsSchema.safeParse(request.params)

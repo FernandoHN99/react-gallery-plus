@@ -17,14 +17,14 @@ export default function PageLogin() {
    const { login, isLoggingIn } = useLogin()
 
    const from = (location.state?.from?.pathname as string) ?? '/'
+   const sessionExpired = location.state?.sessionExpired as boolean | undefined
 
    useEffect(() => {
-      const sessionExpired = sessionStorage.getItem('sessionExpired')
+      // Mostra toast apenas se a sessão expirou (não no acesso inicial)
       if (sessionExpired) {
          toast.error('Sessão expirada. Por favor, faça login novamente.')
-         sessionStorage.removeItem('sessionExpired')
       }
-   }, [])
+   }, [sessionExpired])
 
    const {
       register,

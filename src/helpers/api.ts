@@ -17,7 +17,6 @@ export const fetcher = (url: string, options: AxiosRequestConfig = {}) =>
    api.get(url, options).then((res) => res.data)
 
 // ============ REQUEST INTERCEPTOR ============
-// Adiciona Authorization header com accessToken
 api.interceptors.request.use((config) => {
    const token = getAccessToken()
    if (token) {
@@ -27,38 +26,46 @@ api.interceptors.request.use((config) => {
 })
 
 // ============ RESPONSE INTERCEPTOR ============
-let isRedirecting = false
-
 api.interceptors.response.use(
    (response) => response,
    async (error: AxiosError) => {
+      const originalRequest = error.config
       const { status } = error.response || {}
 
-      // === CASO 1: 401 TOKEN_EXPIRED (não vindo de /auth/refresh) ===
+      // Flag para evitar retry infinito da mesma request
+      const alreadyRetried = originalRequest?._retry
+      const isRefreshCall = originalRequest?.url?.includes('/auth/refresh')
+
+      // === CASO: 401 TOKEN_EXPIRED (não vindo de /auth/refresh, primeira tentativa) ===
       if (
          status === 401 &&
          authErrorHandler.isTokenExpired(error) &&
-         !error.config?.url?.includes('/auth/refresh')
+         !isRefreshCall &&
+         !alreadyRetried
       ) {
          try {
-            // Aguarda refresh (fila singleton)
+            // Marca como retentada para evitar retry duplicado
+            ;(originalRequest as any)._retry = true
+
+            // Aguarda fila de refresh (pode ser uma request anterior já refazendo)
             const newToken = await refreshQueue.waitForRefresh()
+
+            // Atualiza token em memória
             setAccessToken(newToken)
 
             // Refaz request original com novo token
-            if (error.config) {
-               error.config.headers.Authorization = `Bearer ${newToken}`
-               return api.request(error.config)
-            }
+            originalRequest!.headers.Authorization = `Bearer ${newToken}`
+            return api.request(originalRequest!)
          } catch (refreshError) {
-            // === Se refresh falhou ===
+            // === Refresh falhou ===
 
-            if (authErrorHandler.isRefreshTokenInvalid(refreshError)) {
-               // Refresh retornou 401 (REFRESH_TOKEN_EXPIRED ou INVALID_REFRESH_TOKEN)
-               performLogout()
-               toast.error('Sessão expirada. Faça login novamente.')
-            } else if (authErrorHandler.isNetworkError(refreshError)) {
-               // Erro de rede, timeout, 5xx, etc
+            // Limpa token em memória de qualquer forma
+            clearAccessToken()
+
+            // Se for erro de rede/timeout/5xx: mostra toast
+            // Se for 401 (REFRESH_TOKEN_EXPIRED/INVALID): rejeita silenciosamente
+            // (React Query vai tratar com isRefetchError)
+            if (authErrorHandler.isNetworkError(refreshError)) {
                toast.error(
                   'Não foi possível renovar sua sessão. Verifique sua conexão.',
                )
@@ -68,22 +75,7 @@ api.interceptors.response.use(
          }
       }
 
-      // === CASO 2: 401 vindo de /auth/refresh (refresh token inválido) ===
-      if (status === 401 && error.config?.url?.includes('/auth/refresh')) {
-         performLogout()
-         toast.error('Sessão expirada. Faça login novamente.')
-         return Promise.reject(error)
-      }
-
-      // === Qualquer outro erro: passa adiante ===
+      // === Qualquer outro erro (não 401, ou 401 já retentado, ou erro em /auth/refresh) ===
       return Promise.reject(error)
    },
 )
-
-function performLogout() {
-   if (isRedirecting) return
-   isRedirecting = true
-   clearAccessToken()
-   sessionStorage.setItem('sessionExpired', 'true')
-   window.location.href = '/login'
-}

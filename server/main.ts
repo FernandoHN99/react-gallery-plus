@@ -1,9 +1,9 @@
+import { resolve } from 'node:path'
 import fastifyCookie from '@fastify/cookie'
 import fastifyJwt from '@fastify/jwt'
 import multipart from '@fastify/multipart'
 import staticFiles from '@fastify/static'
 import Fastify from 'fastify'
-import { resolve } from 'path'
 import { albumsRoutes } from './albums/albums-routes'
 import { AlbumsService } from './albums/albums-service'
 import { authRoutes } from './auth/auth-routes'
@@ -14,37 +14,48 @@ import { PhotosService } from './photos/photos-service'
 import { DatabaseService } from './services/database-service'
 import { ImageService } from './services/image-service'
 
-// Start server
 const start = async () => {
    const fastify = Fastify({
       logger: true,
    })
 
+   // Se quiser fazer somente uma assinatura para acess token e refresh
+   // await fastify.register(fastifyJwt, {
+   //    secret: env.JWT_SECRET,
+   //    cookie: {
+   //       cookieName: 'refreshToken',
+   //       signed: false,
+   //    },
+   //    sign: {
+   //       expiresIn: '10s',
+   //    },
+   // })
+
    await fastify.register(fastifyJwt, {
-      secret: env.JWT_SECRET,
-      // cookie: {
-      //    cookieName: 'refreshToken',
-      //    signed: false,
-      // },
-      // expiresIn é o tempo de expiração do token, assim quando o token de autenticação é emitido dentro dele é salvo a data de emissão
-      // e portanto quando o backend for acessado novamente, ele verifica se o token está dentro do tempo de expiração no caso 10 minutos
-      sign: {
-         expiresIn: '10m',
-      },
+      secret: env.JWT_ACCESS_SECRET,
+      namespace: 'access',
+      sign: { expiresIn: '10s' },
+   })
+
+   await fastify.register(fastifyJwt, {
+      secret: env.JWT_REFRESH_SECRET,
+      namespace: 'refresh',
+      cookie: { cookieName: 'refreshToken', signed: false },
+      sign: { expiresIn: '7d' },
    })
    await fastify.register(fastifyCookie)
 
    await fastify.register(import('@fastify/cors'), {
       credentials: true,
-      origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
-      //   origin: (origin, cb) => {
-      //      if (!origin) {
-      //         cb(new Error('Origin must be provided'), false)
-      //         return
-      //      }
+      // origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: (origin, cb) => {
+         if (!origin) {
+            cb(new Error('Origin must be provided'), false)
+            return
+         }
 
-      //      cb(null, true)
-      //   },
+         cb(null, true)
+      },
       methods: ['GET', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
    })

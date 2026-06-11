@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { loginSchema } from './auth-interface'
 import type { AuthService } from './auth-services'
-import { verifyJwt } from './verify-jwt'
+import { verifyJwtAccessToken, verifyJwtRefreshToken } from './verify-jwt'
 
 export async function authRoutes(
    fastify: FastifyInstance,
@@ -16,12 +16,10 @@ export async function authRoutes(
 
       try {
          const user = await authService.makeLogin(body.data)
-
-         const token = await reply.jwtSign({}, { sign: { sub: user.id } })
-
-         const refreshToken = await reply.jwtSign(
+         const token = await reply.accessJwtSign({}, { sign: { sub: user.id } })
+         const refreshToken = await reply.refreshJwtSign(
             {},
-            { sign: { sub: user.id, expiresIn: '7d' } },
+            { sign: { sub: user.id } }, // se quiser sobreescrever o tempo:  { sign: { sub: user.id, expiresIn: '30d' } },
          )
 
          return reply
@@ -29,7 +27,7 @@ export async function authRoutes(
                path: '/',
                sameSite: true,
                httpOnly: true,
-               maxAge: 7 * 60 * 60 * 24,
+               maxAge: 7 * 24 * 60 * 60,
             })
             .status(200)
             .send({ token })
@@ -42,10 +40,10 @@ export async function authRoutes(
    })
 
    // POST /auth/refresh
-   fastify.post('/auth/refresh', async (request, reply) => {
-      try {
-         await request.jwtVerify({ onlyCookie: true })
-
+   fastify.post(
+      '/auth/refresh',
+      { onRequest: [verifyJwtRefreshToken] },
+      async (request, reply) => {
          const sub = (request.user as { sub: string }).sub
 
          const user = await authService.findById(sub)
@@ -56,25 +54,11 @@ export async function authRoutes(
             })
          }
 
-         const token = await reply.jwtSign({}, { sign: { sub: user.id } })
+         const token = await reply.accessJwtSign({}, { sign: { sub: user.id } })
 
          return reply.status(200).send({ token })
-      } catch (error) {
-         // Se o erro é de token expirado
-         if (error instanceof Error && error.message.includes('expired')) {
-            return reply.status(401).send({
-               code: 'REFRESH_TOKEN_EXPIRED',
-               message: 'Refresh token expirado. Faça login novamente.',
-            })
-         }
-
-         // Qualquer outro erro de JWT (malformado, inválido, etc)
-         return reply.status(401).send({
-            code: 'INVALID_REFRESH_TOKEN',
-            message: 'Refresh token inválido',
-         })
-      }
-   })
+      },
+   )
 
    // POST /auth/logout
    fastify.post('/auth/logout', async (_, reply) => {
@@ -84,7 +68,7 @@ export async function authRoutes(
    // GET /auth/me
    fastify.get(
       '/auth/me',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          const sub = (request.user as { sub: string }).sub
 

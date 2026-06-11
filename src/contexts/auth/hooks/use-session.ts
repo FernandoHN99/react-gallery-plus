@@ -16,6 +16,7 @@ export default function useSession() {
       user: query.data ?? null,
       isLoadingSession: query.isPending,
       isAuthenticated: query.isSuccess && !!query.data?.id,
-      isError: query.isError,
+      // Diferencia "sessão expirada durante uso" (isRefetchError) de "visitante novo" (isLoadingError)
+      sessionExpired: query.isRefetchError,
    }
 }

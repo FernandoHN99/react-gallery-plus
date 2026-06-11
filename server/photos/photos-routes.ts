@@ -1,7 +1,7 @@
 import type { MultipartFile } from '@fastify/multipart'
 import type { FastifyInstance } from 'fastify'
 import { ZodError } from 'zod'
-import { verifyJwt } from '../auth/verify-jwt.ts'
+import { verifyJwtAccessToken } from '../auth/verify-jwt.ts'
 import {
    createPhotoSchema,
    managePhotoAlbumsSchema,
@@ -18,7 +18,7 @@ export async function photosRoutes(
    // GET /photos - with optional album filter
    fastify.get(
       '/photos',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const queryResult = photoQuerySchema.safeParse(request.query)
@@ -44,7 +44,7 @@ export async function photosRoutes(
    // GET /photos/:id
    fastify.get(
       '/photos/:id',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const paramsResult = photoParamsSchema.safeParse(request.params)
@@ -76,7 +76,7 @@ export async function photosRoutes(
    // POST /photos - create photo with title only
    fastify.post(
       '/photos',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const bodyResult = createPhotoSchema.safeParse(request.body)
@@ -110,7 +110,7 @@ export async function photosRoutes(
    // POST /photos/:id/image - upload image for existing photo
    fastify.post(
       '/photos/:id/image',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const paramsResult = photoParamsSchema.safeParse(request.params)
@@ -159,7 +159,7 @@ export async function photosRoutes(
    // PATCH /photos/:id - update photo title
    fastify.patch(
       '/photos/:id',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const paramsResult = photoParamsSchema.safeParse(request.params)
@@ -200,7 +200,7 @@ export async function photosRoutes(
    // DELETE /photos/:id
    fastify.delete(
       '/photos/:id',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const paramsResult = photoParamsSchema.safeParse(request.params)
@@ -232,7 +232,7 @@ export async function photosRoutes(
    // PUT /photos/:id/albums - manage photo albums (add/remove)
    fastify.put(
       '/photos/:id/albums',
-      { onRequest: [verifyJwt] },
+      { onRequest: [verifyJwtAccessToken] },
       async (request, reply) => {
          try {
             const paramsResult = photoParamsSchema.safeParse(request.params)

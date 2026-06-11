@@ -1,15 +1,49 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
 
-export async function verifyJwt(request: FastifyRequest, reply: FastifyReply) {
+export async function verifyJwtAccessToken(
+   request: FastifyRequest,
+   reply: FastifyReply,
+) {
    try {
-      // A função jwtVerify() verifica se o token JWT é válido e
-      // Retorna as informações principais do payload contida no token dentro da propriedade (chave) "user"
-      // A própria função jwtVerify() já lança um erro caso o token seja inválido
-      await request.jwtVerify()
-   } catch {
+      await request.accessJwtVerify({ onlyCookie: false })
+   } catch (error) {
+      if (
+         error instanceof Error &&
+         error.message.toUpperCase().includes('EXPIRED')
+      ) {
+         return reply.status(401).send({
+            code: 'TOKEN_EXPIRED',
+            message: 'Access token expirado',
+         })
+      }
       return reply.status(401).send({
-         code: 'TOKEN_EXPIRED',
-         message: 'Access token expirado ou inválido',
+         code: 'INVALID_ACCESS_TOKEN',
+         message: 'Access token inválido',
+      })
+   }
+}
+
+export async function verifyJwtRefreshToken(
+   request: FastifyRequest,
+   reply: FastifyReply,
+) {
+   try {
+      await request.refreshJwtVerify({ onlyCookie: true })
+   } catch (error) {
+      if (
+         error instanceof Error &&
+         error.message.toUpperCase().includes('EXPIRED')
+      ) {
+         return reply.status(401).send({
+            code: 'REFRESH_TOKEN_EXPIRED',
+            message: 'Refresh token expirado. Faça login novamente.',
+         })
+      }
+
+      // Qualquer outro erro de JWT (malformado, inválido, etc)
+      return reply.status(401).send({
+         code: 'INVALID_REFRESH_TOKEN',
+         message: 'Refresh token inválido',
       })
    }
 }

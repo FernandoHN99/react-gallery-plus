@@ -1,477 +1,557 @@
-# Retry Inteligente com Fila de Refresh
+# Retry Inteligente com Fila + Detecção de Sessão Expirada
 
-## Visão Geral
+## Visão Geral (REVISADO)
 
-Implementar um sistema profissional de retry automático para requisições autenticadas usando:
-- **1 tentativa** de refresh quando token expira
-- **Fila singleton** para evitar múltiplos refreshes simultâneos
-- **Diferenciação de erros** entre 401 (logout) e 5xx/network (mostrar toast)
-- **1 interceptador** que encapsula toda a lógica
+Implementar um sistema **robusto e profissional** de retry automático para requisições autenticadas, com **separação clara de responsabilidades**:
+
+- **Interceptor** (`api.ts`): Apenas renova token + refaz request. Não redireciona.
+- **React Query** (via `use-session.ts`): Detecta "sessão expirada" vs "visitante novo" usando `isRefetchError`
+- **RequireAuth**: Único responsável por navegação (soft redirect via React Router)
+- **Página de Login**: Mostra toast apenas quando sessão expirou durante o uso
 
 ---
 
-## Fluxo Geral
+## Root Cause do Problema Anterior
 
-### Cenário 1: Token expirado (TOKEN_EXPIRED)
+O interceptor estava confundindo dois cenários:
 
-```
-GET /photos
-↓
-401 TOKEN_EXPIRED
-↓
-[interceptor deteta]
-↓
-refreshQueue.waitForRefresh()
-  └─ POST /auth/refresh
-     ├─ sucesso → retorna token
-     └─ falha (401 ou network) → trata erro
-↓
-Se refresh sucesso: GET /photos (refaz com novo token)
-Se refresh 401: logout + toast "Sessão expirada"
-Se refresh network: toast "Não foi possível renovar sessão"
-```
+1. **Visitante novo** (nunca logou): `GET /auth/me` sem token → 401 → tenta refresh → falha → logout forçado (ERRADO)
+2. **Sessão expirada** (estava logado): refetch de `/auth/me` → 401 → tenta refresh → falha → logout (CORRETO)
 
-### Cenário 2: Múltiplas requisições simultâneas com 401
+Ambos resultavam em `INVALID_REFRESH_TOKEN`, então o interceptor não podia distinguir. Solução: deixar a detecção para o React Query, que já sabe a diferença via `isRefetchError` (tinha dados antes) vs `isLoadingError` (nunca teve dados).
+
+---
+
+## Fluxos Esperados
+
+### Cenário 1: Visitante novo abre a app
 
 ```
-GET /photos    → 401 TOKEN_EXPIRED
-GET /orders    → 401 TOKEN_EXPIRED
+Browser carrega App
+   ↓
+RequireAuth carrega → useSession() → getSession() → GET /auth/me
+   ↓
+accessToken = null (memória) → SEM header Authorization
+   ↓
+Backend: verifyJwt falha → 401 TOKEN_EXPIRED
+   ↓
+Interceptor: TOKEN_EXPIRED → tenta refresh
+   ↓
+POST /auth/refresh (SEM cookie, nunca logou) → 401 INVALID_REFRESH_TOKEN
+   ↓
+Interceptor: refresh falhou + é erro de rede/5xx? NÃO → rejeita erro silenciosamente
+   ↓
+React Query: query.isLoadingError = true (primeira busca falhou)
+   ↓
+RequireAuth: !isAuthenticated → <Navigate to="/login" state={{ sessionExpired: false }}>
+   ↓
+page-login: location.state.sessionExpired = false → SEM toast ✅
+```
+
+### Cenário 2: Usuário logado, sessão expira durante uso
+
+```
+(Usuário logado, navegando normalmente, accessToken em memória)
+   ↓
+refetchInterval de useSession() dispara → GET /auth/me
+   ↓
+Header: Authorization: Bearer <old_token>
+   ↓
+Backend: token expirou → 401 TOKEN_EXPIRED
+   ↓
+Interceptor: TOKEN_EXPIRED + não é refetchCall + !_retry
+   ↓
+refreshQueue.waitForRefresh() → POST /auth/refresh
+   ↓
+(refreshToken ainda válido no cookie)
+   ↓
+Backend: issuea novo accessToken → 200 { token: "new_token" }
+   ↓
+Interceptor: setAccessToken("new_token") + refaz GET /auth/me com novo token
+   ↓
+GET /auth/me (com novo token) → 200 + data ✅
+   ↓
+(usuário continua navegando, sem saber que nada aconteceu)
+```
+
+### Cenário 3: Sessão expira E refreshToken também expirou
+
+```
+(Usuário logado, accessToken venceu, refreshToken também venceu)
+   ↓
+refetchInterval → GET /auth/me → 401 TOKEN_EXPIRED
+   ↓
+Interceptor: tenta refresh → POST /auth/refresh
+   ↓
+Backend: jwtVerify({ onlyCookie: false }) falha → 401 REFRESH_TOKEN_EXPIRED
+   ↓
+Interceptor: catch(refreshError) → authErrorHandler.isRefreshTokenInvalid() = true
+   ↓
+clearAccessToken() → rejeita erro
+   ↓
+React Query: query.isRefetchError = true (tinha user antes, refetch falhou)
+   ↓
+RequireAuth: !isAuthenticated + sessionExpired=true → <Navigate state={{ sessionExpired: true }}>
+   ↓
+page-login: toast "Sessão expirada. Por favor, faça login novamente." ✅
+```
+
+### Cenário 4: Servidor fora do ar (erro temporário)
+
+```
+GET /auth/me → timeout ou 5xx
+   ↓
+Interceptor: isNetworkError() = true
+   ↓
+toast.error('Não foi possível renovar sua sessão. Verifique sua conexão.')
+   ↓
+rejeita erro (não limpa token, deixa usuário tentar novamente)
+   ↓
+page permanece, usuário pode clicar retry ou esperar
+```
+
+### Cenário 5: Token expira MAS múltiplas requisições simultâneas
+
+```
+GET /photos → 401 TOKEN_EXPIRED
+GET /orders → 401 TOKEN_EXPIRED
 GET /dashboard → 401 TOKEN_EXPIRED
-                     ↓
-[Req 1 dispara refresh]
-[Req 2 e 3 aguardam refreshPromise]
-                     ↓
-POST /auth/refresh → sucesso
-                     ↓
-Todas 3 repetem com novo token
-```
-
-### Cenário 3: Refresh token expirado
-
-```
-GET /photos
-↓
-401 TOKEN_EXPIRED
-↓
-refreshQueue.waitForRefresh()
-  └─ POST /auth/refresh
-     ↓
-     401 REFRESH_TOKEN_EXPIRED ou INVALID_REFRESH_TOKEN
-↓
-logout + toast "Sessão expirada. Faça login novamente"
-```
-
-### Cenário 4: Servidor ou rede fora
-
-```
-GET /photos
-↓
-401 TOKEN_EXPIRED
-↓
-refreshQueue.waitForRefresh()
-  └─ POST /auth/refresh
-     ↓
-     500 Internal Server Error (ou timeout, sem response)
-↓
-toast "Não foi possível renovar sua sessão. Verifique sua conexão"
+                    ↓
+[Primeira request entra no interceptor]
+   refreshQueue.waitForRefresh() → refreshPromise = performRefresh()
+   
+[Outras requests entram]
+   refreshQueue.waitForRefresh() → refreshPromise já existe → aguardam
+   
+[Refresh termina com sucesso]
+   refreshPromise = null (limpeza)
+   
+[Todas 3 requests refazem com novo token]
+   ↓
+GET /photos (novo token) → 200
+GET /orders (novo token) → 200
+GET /dashboard (novo token) → 200
+   ↓
+Usuário vê 3 requisições bem-sucedidas, sem perceber que ocorreu refresh ✅
 ```
 
 ---
 
-## Mudanças Backend
+## Arquitetura de Componentes
 
-### 1. `server/auth/verify-jwt.ts`
+```
+┌─────────────────────────────────────────┐
+│  RequireAuth (navegação)                 │
+│  - Único redirect (soft via React Router)│
+│  - Passa sessionExpired no state         │
+└─────────────────────┬───────────────────┘
+                      │ isAuthenticated?
+                      │
+         ┌────────────┴────────────┐
+         │                         │
+         ▼                         ▼
+    Outlet (rotas        Navigate("/login"
+    protegidas)          state={{ sessionExpired }})
+                         │
+                         ▼
+                  ┌──────────────────┐
+                  │  PageLogin       │
+                  │  - Toast via     │
+                  │    location.state│
+                  └──────────────────┘
 
-**O que muda:**
-- Retornar objeto com `code` e `message` em vez de texto genérico
+┌──────────────────────────────────────────┐
+│  useSession Hook (gerencia estado)       │
+│  - query (TanStack Query)                │
+│  - isRefetchError → sessionExpired       │
+│  - isLoadingError → visitante novo       │
+└──────────────────┬───────────────────────┘
+                   │
+                   ▼
+           ┌───────────────┐
+           │  authService  │
+           │  - getSession()│
+           │  - login()    │
+           │  - logout()   │
+           └───────┬───────┘
+                   │
+                   ▼
+      ┌────────────────────────┐
+      │  Axios + Interceptores │
+      │  - Request: add token  │
+      │  - Response: retry 401 │
+      │    + fila singleton    │
+      │    + _retry guard      │
+      └────────────┬───────────┘
+                   │
+                   ▼
+      ┌────────────────────────┐
+      │  refreshQueue          │
+      │  - waitForRefresh()    │
+      │  - Garante 1 refresh   │
+      │    por vez             │
+      └────────────┬───────────┘
+                   │
+                   ▼
+           ┌───────────────┐
+           │  Backend      │
+           │  - /auth/me   │
+           │  - /auth/refresh
+           │  - Codes: TOKEN_EXPIRED,
+           │    REFRESH_TOKEN_EXPIRED,
+           │    INVALID_REFRESH_TOKEN
+           └───────────────┘
+```
 
-**Novo conteúdo:**
+---
+
+## Mudanças Necessárias
+
+### 1. Backend (JÁ FEITO, sem mudanças)
+
+- ✅ `server/auth/verify-jwt.ts` → retorna `{ code: 'TOKEN_EXPIRED' }`
+- ✅ `server/auth/auth-routes.ts` → retorna codes específicos no `/auth/refresh`
+
+---
+
+### 2. Frontend - `src/helpers/api.ts` (REESCREVER)
+
+**Remover:**
+- ~~`performLogout()` function~~
+- ~~`window.location.href`~~
+- ~~`isRedirecting` flag~~
+- ~~`sessionStorage.setItem('sessionExpired')`~~
+- ~~Toast de "Sessão expirada"~~
+- ~~`clearAccessToken` import relacionado a redirect~~
+
+**Manter/Adicionar:**
+- Renovação de token com fila
+- `_retry` flag para evitar loop infinito
+- Toast de erro de rede
+- Detecção de calls to `/auth/refresh` para skip retry
+
 ```typescript
-import type { FastifyReply, FastifyRequest } from 'fastify'
+import axios, { type AxiosError, type AxiosRequestConfig } from 'axios'
+import { toast } from 'sonner'
+import { authErrorHandler } from '../contexts/auth/services/auth-error-handler'
+import {
+   clearAccessToken,
+   getAccessToken,
+   setAccessToken,
+} from '../contexts/auth/services/auth-service'
+import { refreshQueue } from './refresh-queue'
 
-export async function verifyJwt(request: FastifyRequest, reply: FastifyReply) {
-   try {
-      await request.jwtVerify()
-   } catch (error) {
-      // O erro é de expiração ou de token inválido?
-      // jwt lib lança diferentes mensagens, aqui unificamos como TOKEN_EXPIRED
-      return reply.status(401).send({
-         code: 'TOKEN_EXPIRED',
-         message: 'Access token expirado ou inválido',
-      })
+export const api = axios.create({
+   baseURL: import.meta.env.VITE_API_URL,
+   withCredentials: true,
+})
+
+export const fetcher = (url: string, options: AxiosRequestConfig = {}) =>
+   api.get(url, options).then((res) => res.data)
+
+// ============ REQUEST INTERCEPTOR ============
+// Adiciona Authorization header com accessToken a todas as requisições
+api.interceptors.request.use((config) => {
+   const token = getAccessToken()
+   if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+   }
+   return config
+})
+
+// ============ RESPONSE INTERCEPTOR ============
+api.interceptors.response.use(
+   (response) => response,
+   async (error: AxiosError) => {
+      const originalRequest = error.config
+      const { status } = error.response || {}
+
+      // Flag para evitar retry infinito da mesma request
+      const alreadyRetried = (originalRequest as any)?._retry
+      const isRefreshCall = originalRequest?.url?.includes('/auth/refresh')
+
+      // === CASO: 401 TOKEN_EXPIRED (não vindo de /auth/refresh, primeira tentativa) ===
+      if (
+         status === 401 &&
+         authErrorHandler.isTokenExpired(error) &&
+         !isRefreshCall &&
+         !alreadyRetried
+      ) {
+         try {
+            // Marca como retentada para evitar retry duplicado
+            (originalRequest as any)._retry = true
+
+            // Aguarda fila de refresh (pode ser uma request anterior já refazendo)
+            const newToken = await refreshQueue.waitForRefresh()
+
+            // Atualiza token em memória
+            setAccessToken(newToken)
+
+            // Refaz request original com novo token
+            originalRequest!.headers.Authorization = `Bearer ${newToken}`
+            return api.request(originalRequest!)
+         } catch (refreshError) {
+            // === Refresh falhou ===
+
+            // Limpa token em memória de qualquer forma
+            clearAccessToken()
+
+            // Se for erro de rede/timeout/5xx: mostra toast
+            // Se for 401 (REFRESH_TOKEN_EXPIRED/INVALID): rejeita silenciosamente
+            // (React Query vai tratar com isRefetchError)
+            if (authErrorHandler.isNetworkError(refreshError)) {
+               toast.error(
+                  'Não foi possível renovar sua sessão. Verifique sua conexão.',
+               )
+            }
+
+            return Promise.reject(refreshError)
+         }
+      }
+
+      // === Qualquer outro erro (não 401, ou 401 já retentado, ou erro em /auth/refresh) ===
+      return Promise.reject(error)
+   },
+)
+```
+
+---
+
+### 3. Frontend - `src/contexts/auth/hooks/use-session.ts` (ADICIONAR FLAG)
+
+**Adicionar:**
+- `sessionExpired` usando `query.isRefetchError`
+
+```typescript
+import { useQuery } from '@tanstack/react-query'
+import { authService } from '../services/auth-service'
+
+const ONE_HOUR = 1000 * 60 * 60
+
+export default function useSession() {
+   const query = useQuery({
+      queryKey: ['session'],
+      queryFn: authService.getSession,
+      staleTime: ONE_HOUR,
+      refetchInterval: ONE_HOUR,
+      retry: false,
+   })
+
+   return {
+      user: query.data ?? null,
+      isLoadingSession: query.isPending,
+      isAuthenticated: query.isSuccess && !!query.data?.id,
+      sessionExpired: query.isRefetchError, // Tinha dados, refetch falhou = sessão expirou
    }
 }
 ```
 
 ---
 
-### 2. `server/auth/auth-routes.ts` (rota POST /auth/refresh)
+### 4. Frontend - `src/contexts/auth/components/require-auth.tsx` (REESCREVER NAVEGAÇÃO)
 
-**O que muda:**
-- Detectar diferentes tipos de falha no refresh
-- Retornar código específico
+**Mudar de:**
+- Hard redirect `window.location.href`
+- Navegação duplicada (interceptor + RequireAuth)
 
-**Mudanças:**
-
-Na rota POST /auth/refresh, onde valida refreshToken:
-
-```typescript
-// Se refreshToken não existe no cookie
-if (!request.cookies.refreshToken) {
-  return reply.status(401).send({
-    code: 'INVALID_REFRESH_TOKEN',
-    message: 'Refresh token não encontrado',
-  })
-}
-
-// Se refreshToken é inválido/malformado
-try {
-  await request.jwtVerify({ onlyIfSignedAs: 'refresh' })
-} catch (error) {
-  // Token expirou ou é inválido
-  if (error.message.includes('expired')) {
-    return reply.status(401).send({
-      code: 'REFRESH_TOKEN_EXPIRED',
-      message: 'Refresh token expirado. Faça login novamente.',
-    })
-  }
-  return reply.status(401).send({
-    code: 'INVALID_REFRESH_TOKEN',
-    message: 'Refresh token inválido',
-  })
-}
-
-// Se chegou aqui, refresh é válido → issua novo accessToken
-const newAccessToken = fastify.jwt.sign({ sub: userId })
-return reply.send({ token: newAccessToken })
-```
-
----
-
-## Mudanças Frontend
-
-### 1. Novo arquivo: `src/contexts/auth/services/auth-error-handler.ts`
-
-**Responsabilidade:** Analisar erros HTTP e classificar ação recomendada
+**Para:**
+- Soft redirect `<Navigate>`
+- RequireAuth como **único** ponto de navegação
+- Passar `sessionExpired` no `state`
 
 ```typescript
-interface ErrorResponse {
-  code?: string
-  message?: string
-}
+import { Navigate, Outlet, useLocation } from 'react-router'
+import useSession from '../hooks/use-session'
 
-export const authErrorHandler = {
-  /**
-   * Token expirou (mas refreshToken ainda é válido)
-   * Ação: tentar refresh
-   */
-  isTokenExpired(error: any): boolean {
-    return error?.response?.data?.code === 'TOKEN_EXPIRED'
-  },
+export default function RequireAuth() {
+   const { isAuthenticated, isLoadingSession, sessionExpired } = useSession()
+   const location = useLocation()
 
-  /**
-   * Refresh token expirou ou é inválido
-   * Ação: logout imediato
-   */
-  isRefreshTokenInvalid(error: any): boolean {
-    const code = error?.response?.data?.code
-    return (
-      code === 'REFRESH_TOKEN_EXPIRED' ||
-      code === 'INVALID_REFRESH_TOKEN'
-    )
-  },
+   if (isLoadingSession) {
+      return (
+         <div className="flex h-screen items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-primary border-t-accent-brand" />
+         </div>
+      )
+   }
 
-  /**
-   * Não há response (timeout, conexão perdida, etc)
-   * Ação: mostrar erro temporário (não logout)
-   */
-  isNetworkError(error: any): boolean {
-    return !error?.response
-  },
+   if (!isAuthenticated) {
+      return (
+         <Navigate
+            to="/login"
+            state={{ from: location, sessionExpired }}
+            replace
+         />
+      )
+   }
 
-  /**
-   * Extrai mensagem do erro para exibir ao usuário
-   */
-  getErrorMessage(error: any): string {
-    return (
-      error?.response?.data?.message ||
-      error?.message ||
-      'Erro desconhecido'
-    )
-  },
+   return <Outlet />
 }
 ```
 
 ---
 
-### 2. Novo arquivo: `src/helpers/refresh-queue.ts`
+### 5. Frontend - `src/pages/page-login.tsx` (TROCAR sessionStorage POR location.state)
 
-**Responsabilidade:** Fila singleton de refresh (garante 1 refresh por vez)
+**Remover:**
+- ~~`sessionStorage.getItem('sessionExpired')`~~
+- ~~`sessionStorage.removeItem('sessionExpired')`~~
 
-```typescript
-import { authService, getAccessToken } from '../contexts/auth/services/auth-service'
-import { api } from './api'
-
-let refreshPromise: Promise<string> | null = null
-
-/**
- * Aguarda a fila de refresh
- * Se já está refazendo, aguarda a Promise existente
- * Se não, dispara novo refresh
- */
-export const refreshQueue = {
-  async waitForRefresh(): Promise<string> {
-    // Se já existe refresh em andamento, aguarda
-    if (refreshPromise) {
-      return refreshPromise
-    }
-
-    // Senão, dispara novo refresh
-    refreshPromise = performRefresh()
-
-    try {
-      const token = await refreshPromise
-      return token
-    } finally {
-      // Limpa fila após terminar (sucesso ou erro)
-      refreshPromise = null
-    }
-  },
-}
-
-/**
- * Executa o refresh de verdade
- * Retorna novo accessToken ou lança erro
- */
-async function performRefresh(): Promise<string> {
-  try {
-    const { data } = await api.post<{ token: string }>('/auth/refresh')
-    
-    // Atualiza token em memória
-    // (será feito via auth-service exportar uma função setAccessToken)
-    
-    return data.token
-  } catch (error) {
-    // Relança o erro para o interceptor tratar
-    throw error
-  }
-}
-```
-
----
-
-### 3. Modificar: `src/contexts/auth/services/auth-service.ts`
-
-**O que muda:**
-- Exportar função `setAccessToken()` para que refresh-queue.ts possa atualizar
-- Simplificar `getSession()` para não fazer retry (deixa interceptor cuidar)
-
-**Mudanças:**
+**Adicionar:**
+- `location.state?.sessionExpired` (vem do RequireAuth)
 
 ```typescript
-// Nova função
-export function setAccessToken(token: string) {
-  accessToken = token
-}
-
-// getSession() simplificado
-async getSession(): Promise<User> {
-  if (!accessToken) {
-    // O interceptor cuidará do refresh se needed
-    // Aqui só tentamos /auth/me
-  }
-  return fetchMe()
-}
-```
-
----
-
-### 4. Modificar: `src/helpers/api.ts`
-
-**O que muda:**
-- Reescrever interceptor de response
-- Implementar lógica de retry + fila
-- Diferenciar erros (401 vs 5xx vs network)
-
-**Novo conteúdo:**
-
-```typescript
-import axios, { type AxiosRequestConfig, type AxiosError } from 'axios'
-import { clearAccessToken, getAccessToken, setAccessToken } from '../contexts/auth/services/auth-service'
-import { authErrorHandler } from '../contexts/auth/services/auth-error-handler'
-import { refreshQueue } from './refresh-queue'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useEffect } from 'react'
+import { useForm } from 'react-hook-form'
+import { useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
+import Logo from '../assets/images/galeria-plus-full-logo.svg?react'
+import Button from '../components/button'
+import InputText from '../components/input-text'
+import Text from '../components/text'
+import useLogin from '../contexts/auth/hooks/use-login'
+import { type LoginFormSchema, loginFormSchema } from '../contexts/auth/schemas'
+import { MOCK_CREDENTIALS } from '../contexts/auth/services/auth-service'
 
-export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-  withCredentials: true,
-})
+export default function PageLogin() {
+   const navigate = useNavigate()
+   const location = useLocation()
+   const { login, isLoggingIn } = useLogin()
 
-export const fetcher = (url: string, options: AxiosRequestConfig = {}) =>
-  api.get(url, options).then((res) => res.data)
+   const from = (location.state?.from?.pathname as string) ?? '/'
+   const sessionExpired = location.state?.sessionExpired as boolean | undefined
 
-// ============ REQUEST INTERCEPTOR ============
-// Adiciona Authorization header com accessToken
-api.interceptors.request.use((config) => {
-  const token = getAccessToken()
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
-
-// ============ RESPONSE INTERCEPTOR ============
-let isRedirecting = false
-
-api.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    const { status, data: responseData } = error.response || {}
-
-    // === CASO 1: 401 TOKEN_EXPIRED (não vindo de /auth/refresh) ===
-    if (
-      status === 401 &&
-      authErrorHandler.isTokenExpired(error) &&
-      !error.config?.url?.includes('/auth/refresh')
-    ) {
-      try {
-        // Aguarda refresh (fila singleton)
-        const newToken = await refreshQueue.waitForRefresh()
-        setAccessToken(newToken)
-
-        // Refaz request original com novo token
-        if (error.config) {
-          error.config.headers.Authorization = `Bearer ${newToken}`
-          return api.request(error.config)
-        }
-      } catch (refreshError) {
-        // === Se refresh falhou ===
-
-        if (authErrorHandler.isRefreshTokenInvalid(refreshError)) {
-          // Refresh retornou 401 (REFRESH_TOKEN_EXPIRED ou INVALID_REFRESH_TOKEN)
-          performLogout()
-          toast.error('Sessão expirada. Faça login novamente.')
-        } else if (authErrorHandler.isNetworkError(refreshError)) {
-          // Erro de rede, timeout, 5xx, etc
-          toast.error(
-            'Não foi possível renovar sua sessão. Verifique sua conexão.'
-          )
-        }
-
-        return Promise.reject(refreshError)
+   useEffect(() => {
+      // Mostra toast apenas se a sessão expirou (não no acesso inicial)
+      if (sessionExpired) {
+         toast.error('Sessão expirada. Por favor, faça login novamente.')
       }
-    }
+   }, [sessionExpired])
 
-    // === CASO 2: 401 vindo de /auth/refresh (refresh token inválido) ===
-    if (
-      status === 401 &&
-      error.config?.url?.includes('/auth/refresh')
-    ) {
-      performLogout()
-      toast.error('Sessão expirada. Faça login novamente.')
-      return Promise.reject(error)
-    }
+   const {
+      register,
+      handleSubmit,
+      formState: { errors },
+   } = useForm<LoginFormSchema>({
+      resolver: zodResolver(loginFormSchema),
+   })
 
-    // === Qualquer outro erro: passa adiante ===
-    return Promise.reject(error)
-  },
-)
+   async function onSubmit(data: LoginFormSchema) {
+      try {
+         await login(data)
+         navigate(from, { replace: true })
+      } catch {
+         toast.error('E-mail ou senha inválidos')
+      }
+   }
 
-function performLogout() {
-  if (isRedirecting) return
-  isRedirecting = true
-  clearAccessToken()
-  sessionStorage.setItem('sessionExpired', 'true')
-  window.location.href = '/login'
+   return (
+      <div className="flex min-h-screen items-center justify-center">
+         <div className="flex w-full max-w-sm flex-col items-center gap-8 px-4">
+            <Logo className="h-6" />
+
+            <form
+               onSubmit={handleSubmit(onSubmit)}
+               className="flex w-full flex-col gap-4"
+            >
+               <div className="flex flex-col gap-1">
+                  <Text variant="label-small" className="text-accent-paragraph">
+                     E-mail
+                  </Text>
+                  <InputText
+                     type="email"
+                     placeholder="admin@gallery.com"
+                     error={errors.email?.message}
+                     {...register('email')}
+                     value="admin@gallery.com"
+                  />
+               </div>
+
+               <div className="flex flex-col gap-1">
+                  <Text variant="label-small" className="text-accent-paragraph">
+                     Senha
+                  </Text>
+                  <InputText
+                     type="password"
+                     placeholder="••••••"
+                     error={errors.password?.message}
+                     {...register('password')}
+                     value="123456"
+                  />
+               </div>
+
+               <Button
+                  type="submit"
+                  className="mt-2 w-full"
+                  handling={isLoggingIn}
+                  disabled={isLoggingIn}
+               >
+                  Entrar
+               </Button>
+            </form>
+
+            <Text
+               variant="paragraph-small"
+               className="text-center text-placeholder"
+            >
+               Use <strong>{MOCK_CREDENTIALS.email}</strong> /{' '}
+               <strong>{MOCK_CREDENTIALS.password}</strong>
+            </Text>
+         </div>
+      </div>
+   )
 }
 ```
 
 ---
 
-### 5. Modificar: `src/contexts/auth/hooks/use-session.ts`
+## Padrões Profissionais Validados
 
-**O que muda:**
-- Nada! Permanece igual.
-
-(Já está configurado corretamente com `retry: false`)
-
----
-
-### 6. Modificar: `src/contexts/auth/components/require-auth.tsx`
-
-**O que muda:**
-- Pode remover lógica de "sessionStorage check" se preferir
-- Agora o toast é mostrado no interceptor, não aqui
-
-(Opcional simplificar)
+✅ **`_retry` flag** — Impede retry infinito (padrão `axios-auth-refresh`)  
+✅ **`isRefetchError`** — Detecta "sessão expirada" vs "visitante novo" (TanStack Query nativo)  
+✅ **Fila singleton** — Evita N refreshes simultâneos  
+✅ **Soft redirect** — React Router `<Navigate>` em vez de `window.location.href`  
+✅ **Separação de responsabilidades** — Interceptor (token), RequireAuth (navegação), página (UI)  
+✅ **Skip refresh call** — Não tenta refrescar a própria rota de refresh  
 
 ---
 
-## Arquivos a modificar/criar
+## Checklist de Implementação
 
-```
-Backend:
-  ✏️ server/auth/verify-jwt.ts
-  ✏️ server/auth/auth-routes.ts
-
-Frontend:
-  ✨ src/contexts/auth/services/auth-error-handler.ts (NOVO)
-  ✨ src/helpers/refresh-queue.ts (NOVO)
-  ✏️ src/helpers/api.ts (reescrever)
-  ✏️ src/contexts/auth/services/auth-service.ts (adicionar setAccessToken)
-```
-
----
-
-## Fluxo de implementação
-
-### Step 1: Backend
-1. Modificar `verify-jwt.ts` para retornar codes
-2. Modificar `auth-routes.ts` POST /refresh para retornar codes
-3. Testar com Postman/curl
-
-### Step 2: Frontend
-1. Criar `auth-error-handler.ts`
-2. Criar `refresh-queue.ts`
-3. Modificar `auth-service.ts` (adicionar setAccessToken)
-4. Reescrever `api.ts` com novo interceptor
-5. Testar fluxo completo
-
-### Step 3: Testes
-1. Login → fazer requisição → tudo OK
-2. Esperar token expirar (5s) → fazer requisição → refresh automático + retry
-3. Deslogar manualmente → fazer requisição → logout force
-4. Desligar servidor → fazer requisição → toast erro rede
+- [ ] Reescrever `src/helpers/api.ts`
+- [ ] Atualizar `src/contexts/auth/hooks/use-session.ts`
+- [ ] Reescrever `src/contexts/auth/components/require-auth.tsx`
+- [ ] Atualizar `src/pages/page-login.tsx`
+- [ ] `pnpm build-server` sem erros
+- [ ] `pnpm build` sem erros
+- [ ] Testar boot sem login (sem toast)
+- [ ] Testar login normal
+- [ ] Testar sessão expirada (mudar `expiresIn` pra `5s`, esperar + fazer request)
+- [ ] Testar múltiplas requests simultâneas com token expirado
+- [ ] Testar servidor down (sem logout, apenas toast)
 
 ---
 
-## Checklist de validação
+## Notas Importantes
 
-- [ ] Backend retorna codes de erro corretos
-- [ ] Frontend detecta TOKEN_EXPIRED e tenta refresh
-- [ ] Multiple requests usam a fila (só 1 refresh)
-- [ ] Refresh token inválido faz logout
-- [ ] Erro de rede não faz logout
-- [ ] Toast "Sessão expirada" aparece
-- [ ] Toast "Não foi possível renovar" aparece
-- [ ] pnpm build-server passa
-- [ ] Sem erros no console
+1. **`sessionStorage`** foi removido completamente — não é necessário com `isRefetchError`
+2. **`window.location.href`** foi removido — React Router `<Navigate>` é mais limpo e preserva estado
+3. **Toast de sessão expirada** é mostrado **apenas** quando `isRefetchError` (tinha dados antes), não no boot inicial
+4. **Erro de rede** ainda mostra toast, mas **não desconecta** — usuário pode retry
+5. **`getSession()`** no boot tentará refresh automaticamente se houver cookie válido (fluxo normal)
 
 ---
 
-## Notas importantes
+## Benefícios desta Arquitetura
 
-1. **`refreshQueue` é singleton**: Mesmo que 10 requisições falhem com 401 ao mesmo tempo, só 1 refresh é disparado
-2. **Sem exagero**: Apenas 1 tentativa, sem retry exponencial
-3. **Erros diferenciados**: 401 logout / 5xx toast
-4. **Toast com Sonner**: Importar corretamente
-5. **Fila limpa**: Usa try/finally para garantir limpeza mesmo em erro
+| Benefício | Como |
+|-----------|------|
+| Sem loops infinitos | Flag `_retry` na request original |
+| Token renovado transparente | Interceptor + fila singleton |
+| Sem false positives de "sessão expirada" | `isRefetchError` do React Query |
+| UX prévia e consistente | Toast somente em caso de real expiração |
+| Sem hard redirects | Soft redirect via React Router |
+| Responsabilidades claras | Interceptor (token), RequireAuth (navegação), página (UI) |
+| Profissional e testável | Segue padrões do `axios-auth-refresh` e TanStack Query |
 
----
-
-## Possíveis melhorias futuras (Phase 2)
-
-- [ ] Persistir fila em localStorage (para survive page reload)
-- [ ] Retry automático para requisições que falharam por network
-- [ ] Rate limiting de toasts (não mostrar 10x "não foi possível renovar")
-- [ ] Analytics: log quantas requisições foram retried

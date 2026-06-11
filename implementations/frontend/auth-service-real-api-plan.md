@@ -26,7 +26,7 @@ Antes de implementar o frontend, o backend precisa de 3 rotas adicionais em
 ### `POST /auth/refresh`
 
 - Lê o `refreshToken` do cookie (httpOnly, enviado automaticamente)
-- Verifica o JWT com `request.jwtVerify({ onlyCookie: true })`
+- Verifica o JWT com `request.jwtVerify({ onlyCookie: false })`
 - Busca o user pelo `sub` do payload no `db.json`
 - Se válido: gera novo `token` (10m) e retorna `{ token }`
 - Se inválido/expirado: 401
