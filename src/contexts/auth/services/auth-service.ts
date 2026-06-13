@@ -1,4 +1,4 @@
-import { api, fetcher } from '../../../helpers/api'
+import { api, clearRefreshTokenCookie, fetcher } from '../../../helpers/api'
 import type { User } from '../models/user'
 export const MOCK_CREDENTIALS = {
    email: 'admin@gallery.com',
@@ -47,6 +47,6 @@ export const authService = {
 
    async logout(): Promise<void> {
       accessToken = null
-      await api.post('/auth/logout')
+      await clearRefreshTokenCookie()
    },
 }
