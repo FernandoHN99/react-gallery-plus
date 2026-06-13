@@ -3,6 +3,7 @@ import { NuqsAdapter } from 'nuqs/adapters/react-router/v7'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { Toaster } from 'sonner'
 import RequireAuth from './contexts/auth/components/require-auth'
+import { registerQueryClient } from './helpers/auth-events'
 import LayoutMain from './pages/layout-main'
 import PageComponents from './pages/page-components'
 import PageHome from './pages/page-home'
@@ -10,6 +11,7 @@ import PageLogin from './pages/page-login'
 import PagePhotoDetails from './pages/page-photo-details'
 
 const queryClient = new QueryClient()
+registerQueryClient(queryClient)
 
 export default function App() {
    return (

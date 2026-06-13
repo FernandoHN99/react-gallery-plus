@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { clearAuthSessionExpired } from '../../../helpers/auth-events'
 import { authService } from '../services/auth-service'
 
 export default function useLogout() {
@@ -7,6 +8,7 @@ export default function useLogout() {
    const { mutateAsync, isPending } = useMutation({
       mutationFn: authService.logout,
       onSuccess: () => {
+         clearAuthSessionExpired()
          queryClient.setQueryData(['session'], null)
       },
    })

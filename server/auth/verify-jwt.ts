@@ -4,6 +4,12 @@ export async function verifyJwtAccessToken(
    request: FastifyRequest,
    reply: FastifyReply,
 ) {
+   if (!request.headers.authorization) {
+      return reply.status(401).send({
+         code: 'MISSING_ACCESS_TOKEN',
+         message: 'Access token não informado',
+      })
+   }
    try {
       await request.accessJwtVerify({ onlyCookie: false })
    } catch (error) {

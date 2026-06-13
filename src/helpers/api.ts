@@ -1,20 +1,49 @@
-import axios, { type AxiosError, type AxiosRequestConfig } from 'axios'
+import axios, {
+   type AxiosError,
+   type AxiosRequestConfig,
+   type InternalAxiosRequestConfig,
+} from 'axios'
 import { toast } from 'sonner'
-import { authErrorHandler } from '../contexts/auth/services/auth-error-handler'
+import {
+   type AuthFailure,
+   authErrorHandler,
+} from '../contexts/auth/services/auth-error-handler'
 import {
    clearAccessToken,
    getAccessToken,
    setAccessToken,
 } from '../contexts/auth/services/auth-service'
+import {
+   type AuthSessionExpiredReason,
+   hasCachedAuthSession,
+   onAuthSessionExpired,
+} from './auth-events'
 import { refreshQueue } from './refresh-queue'
 
-export const api = axios.create({
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+   _retry?: boolean
+}
+
+const NETWORK_ERROR_MESSAGE =
+   'Não foi possível conectar ao servidor. Verifique sua conexão.'
+
+const apiConfig = {
    baseURL: import.meta.env.VITE_API_URL,
    withCredentials: true,
+}
+
+const authApi = axios.create(apiConfig)
+
+export const api = axios.create({
+   ...apiConfig,
 })
 
 export const fetcher = (url: string, options: AxiosRequestConfig = {}) =>
    api.get(url, options).then((res) => res.data)
+
+export async function clearRefreshTokenCookie() {
+   await authApi.post('/auth/logout')
+}
 
 // ============ REQUEST INTERCEPTOR ============
 api.interceptors.request.use((config) => {
@@ -25,57 +54,116 @@ api.interceptors.request.use((config) => {
    return config
 })
 
-// ============ RESPONSE INTERCEPTOR ============
+async function retryWithRefresh(originalRequest: RetryableRequestConfig) {
+   originalRequest._retry = true
+
+   const token = await refreshQueue.waitForRefresh()
+
+   setAccessToken(token)
+   originalRequest.headers.Authorization = `Bearer ${token}`
+
+   return api.request(originalRequest)
+}
+
+function handleRefreshFailure(error: unknown, originalAuthFailure: AuthFailure) {
+   clearAccessToken()
+
+   const refreshFailure = authErrorHandler.getAuthFailure(error)
+
+   if (refreshFailure === 'NETWORK') {
+      return Promise.reject(error)
+   }
+
+   if (shouldExpireSessionAfterRefreshFailure(originalAuthFailure, refreshFailure)) {
+      return expireSession(error, refreshFailure)
+   }
+
+   return Promise.reject(error)
+}
+
+async function expireSession(error: unknown, reason: AuthSessionExpiredReason) {
+   clearAccessToken()
+   onAuthSessionExpired(reason)
+
+   try {
+      await clearRefreshTokenCookie()
+   } catch {
+      // Local logout still wins; the cookie can only be removed by the server.
+   }
+
+   return Promise.reject(error)
+}
+
+function shouldExpireSessionAfterRefreshFailure(
+   originalAuthFailure: AuthFailure,
+   refreshFailure: AuthFailure,
+): refreshFailure is AuthSessionExpiredReason {
+   if (refreshFailure === 'REFRESH_TOKEN_EXPIRED') return true
+
+   return (
+      refreshFailure === 'INVALID_REFRESH_TOKEN' &&
+      (originalAuthFailure === 'TOKEN_EXPIRED' || hasCachedAuthSession())
+   )
+}
+
+function rejectNetworkError(error: unknown) {
+   toast.error(NETWORK_ERROR_MESSAGE)
+
+   return Promise.reject(error)
+}
+
+function isRefreshCall(request: RetryableRequestConfig) {
+   return request.url?.includes('/auth/refresh') ?? false
+}
+
 api.interceptors.response.use(
    (response) => response,
    async (error: AxiosError) => {
-      const originalRequest = error.config
-      const { status } = error.response || {}
+      const authFailure = authErrorHandler.getAuthFailure(error)
 
-      // Flag para evitar retry infinito da mesma request
-      const alreadyRetried = originalRequest?._retry
-      const isRefreshCall = originalRequest?.url?.includes('/auth/refresh')
+      switch (authFailure) {
+         case 'TOKEN_EXPIRED':
+         case 'MISSING_ACCESS_TOKEN': {
+            const originalRequest = error.config as
+               | RetryableRequestConfig
+               | undefined
 
-      // === CASO: 401 TOKEN_EXPIRED (não vindo de /auth/refresh, primeira tentativa) ===
-      if (
-         status === 401 &&
-         authErrorHandler.isTokenExpired(error) &&
-         !isRefreshCall &&
-         !alreadyRetried
-      ) {
-         try {
-            // Marca como retentada para evitar retry duplicado
-            ;(originalRequest as any)._retry = true
-
-            // Aguarda fila de refresh (pode ser uma request anterior já refazendo)
-            const newToken = await refreshQueue.waitForRefresh()
-
-            // Atualiza token em memória
-            setAccessToken(newToken)
-
-            // Refaz request original com novo token
-            originalRequest!.headers.Authorization = `Bearer ${newToken}`
-            return api.request(originalRequest!)
-         } catch (refreshError) {
-            // === Refresh falhou ===
-
-            // Limpa token em memória de qualquer forma
-            clearAccessToken()
-
-            // Se for erro de rede/timeout/5xx: mostra toast
-            // Se for 401 (REFRESH_TOKEN_EXPIRED/INVALID): rejeita silenciosamente
-            // (React Query vai tratar com isRefetchError)
-            if (authErrorHandler.isNetworkError(refreshError)) {
-               toast.error(
-                  'Não foi possível renovar sua sessão. Verifique sua conexão.',
-               )
+            if (
+               !originalRequest ||
+               originalRequest._retry ||
+               isRefreshCall(originalRequest)
+            ) {
+               return Promise.reject(error)
             }
 
-            return Promise.reject(refreshError)
+            try {
+               return await retryWithRefresh(originalRequest)
+            } catch (refreshError) {
+               return handleRefreshFailure(refreshError, authFailure)
+            }
          }
-      }
 
-      // === Qualquer outro erro (não 401, ou 401 já retentado, ou erro em /auth/refresh) ===
-      return Promise.reject(error)
+         case 'INVALID_ACCESS_TOKEN':
+            return expireSession(error, authFailure)
+
+         case 'INVALID_REFRESH_TOKEN':
+         case 'REFRESH_TOKEN_EXPIRED': {
+            const originalRequest = error.config as
+               | RetryableRequestConfig
+               | undefined
+
+            if (originalRequest && isRefreshCall(originalRequest)) {
+               return Promise.reject(error)
+            }
+
+            return expireSession(error, authFailure)
+         }
+
+         case 'NETWORK':
+            return rejectNetworkError(error)
+
+         default:
+            return Promise.reject(error)
+      }
    },
 )

@@ -10,21 +10,35 @@ import Text from '../components/text'
 import useLogin from '../contexts/auth/hooks/use-login'
 import { type LoginFormSchema, loginFormSchema } from '../contexts/auth/schemas'
 import { MOCK_CREDENTIALS } from '../contexts/auth/services/auth-service'
+import { clearAuthSessionExpired } from '../helpers/auth-events'
+
+type LoginLocationState = {
+   from?: {
+      pathname?: string
+   }
+   sessionExpired?: boolean
+}
 
 export default function PageLogin() {
    const navigate = useNavigate()
    const location = useLocation()
    const { login, isLoggingIn } = useLogin()
 
-   const from = (location.state?.from?.pathname as string) ?? '/'
-   const sessionExpired = location.state?.sessionExpired as boolean | undefined
+   const locationState = location.state as LoginLocationState | null
+   const fromLocation = locationState?.from
+   const from = fromLocation?.pathname ?? '/'
+   const sessionExpired = Boolean(locationState?.sessionExpired)
 
    useEffect(() => {
-      // Mostra toast apenas se a sessão expirou (não no acesso inicial)
-      if (sessionExpired) {
-         toast.error('Sessão expirada. Por favor, faça login novamente.')
-      }
-   }, [sessionExpired])
+      if (!sessionExpired) return
+
+      toast.error('Sessão expirada. Por favor, faça login novamente.')
+      clearAuthSessionExpired()
+      navigate(location.pathname, {
+         replace: true,
+         state: fromLocation ? { from: fromLocation } : null,
+      })
+   }, [fromLocation, location.pathname, navigate, sessionExpired])
 
    const {
       register,
