@@ -11,12 +11,15 @@ interface PhotoDetailResponse extends Photo {
    previousPhotoId?: string
 }
 
+const PHOTO_DETAIL_STALE_TIME = 1000 * 60
+
 export default function usePhoto(id?: string) {
    const navigate = useNavigate()
    const { data, isLoading } = useQuery<PhotoDetailResponse>({
       queryKey: ['photo', id],
       queryFn: () => fetcher(`/photos/${id}`),
       enabled: !!id,
+      staleTime: PHOTO_DETAIL_STALE_TIME,
    })
    const queryClient = useQueryClient()
    const { managePhotoOnAlbumMutation } = usePhotoAlbums()

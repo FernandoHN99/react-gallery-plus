@@ -8,6 +8,8 @@ const toSearchParams = createSerializer({
    q: parseAsString,
 })
 
+const PHOTOS_STALE_TIME = 1000 * 60
+
 export default function usePhotos() {
    const [albumId, setAlbumId] = useQueryState('albumId')
    const [q, setQ] = useQueryState('q')
@@ -15,6 +17,7 @@ export default function usePhotos() {
    const { data, isLoading } = useQuery<Photo[]>({
       queryKey: ['photos', albumId, q],
       queryFn: () => fetcher(`/photos${toSearchParams({ albumId, q })}`),
+      staleTime: PHOTOS_STALE_TIME,
    })
 
    return {

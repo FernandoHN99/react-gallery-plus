@@ -31,17 +31,17 @@ const start = async () => {
    //    },
    // })
 
-    await fastify.register(fastifyJwt, {
-       secret: env.JWT_ACCESS_SECRET,
-       namespace: 'access',
-       sign: { expiresIn: '5s' },
-    })
+   await fastify.register(fastifyJwt, {
+      secret: env.JWT_ACCESS_SECRET,
+      namespace: 'access',
+      sign: { expiresIn: '15m' },
+   })
 
    await fastify.register(fastifyJwt, {
       secret: env.JWT_REFRESH_SECRET,
       namespace: 'refresh',
       cookie: { cookieName: 'refreshToken', signed: false },
-      sign: { expiresIn: '10s' },
+      sign: { expiresIn: '7d' },
    })
    await fastify.register(fastifyCookie)
 

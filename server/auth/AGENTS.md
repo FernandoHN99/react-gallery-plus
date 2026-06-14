@@ -22,7 +22,10 @@ This file documents `server/auth/`.
 
 - Access tokens are returned to the frontend and kept in frontend memory.
 - Refresh tokens are cookies owned by the backend.
+- Access tokens expire in `15m`.
+- Refresh token JWTs expire in `7d`.
 - The `refreshToken` cookie must be `httpOnly`, have `path: '/'`, and be cleared by `/auth/logout`.
+- The `refreshToken` cookie `maxAge` must stay aligned with the refresh JWT lifetime: `7 * 24 * 60 * 60` seconds.
 - Frontend JavaScript cannot remove the `refreshToken` cookie directly.
 
 ## JWT Error Codes
