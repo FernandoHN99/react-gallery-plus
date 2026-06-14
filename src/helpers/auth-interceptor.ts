@@ -15,7 +15,6 @@ import {
 } from '../contexts/auth/services/auth-error-handler'
 import {
    type AuthSessionExpiredReason,
-   hasCachedAuthSession,
    onAuthSessionExpired,
 } from './auth-events'
 import { refreshQueue } from './refresh-queue'
@@ -65,14 +64,14 @@ export function setupAuthInterceptors({
                try {
                   return await retryWithRefresh(originalRequest)
                } catch (refreshError) {
-                  return handleRefreshFailure(refreshError, reason)
+                  return handleRefreshFailure(refreshError)
                }
             }
 
             case 'INVALID_ACCESS_TOKEN':
+            case 'INVALID_REFRESH_TOKEN':
                return expireSession(error, reason)
 
-            case 'INVALID_REFRESH_TOKEN':
             case 'REFRESH_TOKEN_EXPIRED': {
                if (isRefreshRequest(error)) {
                   return Promise.reject(error)
@@ -107,10 +106,7 @@ export function setupAuthInterceptors({
       return data.token
    }
 
-   function handleRefreshFailure(
-      error: unknown,
-      originalReason: AuthErrorReason,
-   ) {
+   function handleRefreshFailure(error: unknown) {
       clearAccessToken()
 
       const refreshReason = authErrorHandler.getReason(error)
@@ -119,9 +115,7 @@ export function setupAuthInterceptors({
          return rejectNetworkError(error)
       }
 
-      if (
-         shouldExpireSessionAfterRefreshFailure(originalReason, refreshReason)
-      ) {
+      if (shouldExpireSessionAfterRefreshFailure(refreshReason)) {
          return expireSession(error, refreshReason)
       }
 
@@ -150,14 +144,11 @@ export function setupAuthInterceptors({
 }
 
 function shouldExpireSessionAfterRefreshFailure(
-   originalReason: AuthErrorReason,
    refreshReason: AuthErrorReason,
 ): refreshReason is AuthSessionExpiredReason {
-   if (refreshReason === 'REFRESH_TOKEN_EXPIRED') return true
-
    return (
-      refreshReason === 'INVALID_REFRESH_TOKEN' &&
-      (originalReason === 'TOKEN_EXPIRED' || hasCachedAuthSession())
+      refreshReason === 'INVALID_REFRESH_TOKEN' ||
+      refreshReason === 'REFRESH_TOKEN_EXPIRED'
    )
 }
 

@@ -40,14 +40,6 @@ export function onAuthSessionExpired(reason: AuthSessionExpiredReason) {
    )
 }
 
-export function hasCachedAuthSession() {
-   if (!queryClient) return false
-
-   const session = queryClient.getQueryData<{ id?: unknown }>(['session'])
-
-   return Boolean(session?.id)
-}
-
 export function clearAuthSessionExpired() {
    if (!queryClient) return
 
