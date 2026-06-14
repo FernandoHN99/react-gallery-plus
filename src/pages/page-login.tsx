@@ -9,6 +9,7 @@ import InputText from '../components/input-text'
 import Text from '../components/text'
 import useLogin from '../contexts/auth/hooks/use-login'
 import { type LoginFormSchema, loginFormSchema } from '../contexts/auth/schemas'
+import { authErrorHandler } from '../contexts/auth/services/auth-error-handler'
 import { MOCK_CREDENTIALS } from '../contexts/auth/services/auth-service'
 import { clearAuthSessionExpired } from '../helpers/auth-events'
 
@@ -32,7 +33,9 @@ export default function PageLogin() {
    useEffect(() => {
       if (!sessionExpired) return
 
-      toast.error('Sessão expirada. Por favor, faça login novamente.')
+      toast.error('Sessão expirada. Por favor, faça login novamente.', {
+         id: 'session-expired',
+      })
       clearAuthSessionExpired()
       navigate(location.pathname, {
          replace: true,
@@ -52,7 +55,9 @@ export default function PageLogin() {
       try {
          await login(data)
          navigate(from, { replace: true })
-      } catch {
+      } catch (error) {
+         if (authErrorHandler.getReason(error) === 'NETWORK') return
+
          toast.error('E-mail ou senha inválidos')
       }
    }

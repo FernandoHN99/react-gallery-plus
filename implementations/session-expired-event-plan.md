@@ -57,20 +57,16 @@ PageLogin limpa o evento e remove sessionExpired do location.state
 
 ## Detalhe importante
 
-`MISSING_ACCESS_TOKEN` tambem acontece quando o usuario esta apenas deslogado.
+`MISSING_ACCESS_TOKEN` tambem acontece quando o usuario esta apenas deslogado, mas o frontend ainda tenta refresh para descobrir se existe uma sessao valida no cookie HttpOnly.
 
-Nesse caso, se o refresh falha com `INVALID_REFRESH_TOKEN` porque nao existe cookie de refresh, o frontend nao deve mostrar toast de sessao expirada.
+Se o refresh falha por rede, o frontend mostra apenas o toast global de conectividade.
 
-Por isso a falha de refresh so gera evento quando:
-
-- o refresh token expirou (`REFRESH_TOKEN_EXPIRED`)
-- o access token original estava expirado (`TOKEN_EXPIRED`)
-- ja existia uma sessao autenticada em cache
+Se o refresh falha com `INVALID_REFRESH_TOKEN` ou `REFRESH_TOKEN_EXPIRED`, o frontend trata como sessao invalida, limpa o cookie via `/auth/logout` e dispara o evento de sessao expirada.
 
 ## Efeitos
 
 - Logout manual nao mostra toast de sessao expirada.
-- Acesso inicial deslogado nao mostra toast.
+- Acesso inicial deslogado sem resposta invalida de refresh nao mostra toast.
 - Erro de rede nao mostra toast de sessao expirada.
 - Apenas falhas reais de autenticacao disparam o aviso.
 - Login e logout limpam qualquer evento antigo para evitar estado residual.
@@ -82,4 +78,4 @@ Como o `refreshToken` e HttpOnly, o frontend nao consegue remove-lo diretamente 
 
 Para logout manual e automatico, o frontend chama `/auth/logout`, que executa `clearCookie('refreshToken')` no backend.
 
-O logout automatico usa uma instancia Axios sem interceptors para evitar loop de refresh/logout durante a propria limpeza de sessao.
+O logout automatico usa `rawApi`, uma instancia Axios sem interceptors, para evitar loop de refresh/logout durante a propria limpeza de sessao.

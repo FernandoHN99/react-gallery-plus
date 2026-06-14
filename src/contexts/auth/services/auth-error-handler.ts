@@ -1,4 +1,4 @@
-export type AuthFailure =
+export type AuthErrorReason =
    | 'TOKEN_EXPIRED'
    | 'MISSING_ACCESS_TOKEN'
    | 'INVALID_ACCESS_TOKEN'
@@ -7,7 +7,7 @@ export type AuthFailure =
    | 'NETWORK'
    | null
 
-const authFailureCodes = [
+const authErrorCodes = [
    'TOKEN_EXPIRED',
    'MISSING_ACCESS_TOKEN',
    'INVALID_ACCESS_TOKEN',
@@ -15,7 +15,7 @@ const authFailureCodes = [
    'INVALID_REFRESH_TOKEN',
 ] as const
 
-type AuthFailureCode = (typeof authFailureCodes)[number]
+type AuthErrorCode = (typeof authErrorCodes)[number]
 
 function isObject(value: unknown): value is Record<string, unknown> {
    return typeof value === 'object' && value !== null
@@ -33,8 +33,8 @@ function getResponseData(error: unknown): Record<string, unknown> | null {
    return isObject(data) ? data : null
 }
 
-function isAuthFailureCode(code: unknown): code is AuthFailureCode {
-   return authFailureCodes.includes(code as AuthFailureCode)
+function isAuthErrorCode(code: unknown): code is AuthErrorCode {
+   return authErrorCodes.includes(code as AuthErrorCode)
 }
 
 function hasResponse(error: unknown): boolean {
@@ -42,12 +42,12 @@ function hasResponse(error: unknown): boolean {
 }
 
 export const authErrorHandler = {
-   getAuthFailure(error: unknown): AuthFailure {
+   getReason(error: unknown): AuthErrorReason {
       if (!hasResponse(error)) return 'NETWORK'
 
       const code = getResponseData(error)?.code
 
-      return isAuthFailureCode(code) ? code : null
+      return isAuthErrorCode(code) ? code : null
    },
 
    getErrorMessage(error: unknown): string {
