@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -8,14 +9,39 @@ import InputText from '../components/input-text'
 import Text from '../components/text'
 import useLogin from '../contexts/auth/hooks/use-login'
 import { type LoginFormSchema, loginFormSchema } from '../contexts/auth/schemas'
+import { authErrorHandler } from '../contexts/auth/services/auth-error-handler'
 import { MOCK_CREDENTIALS } from '../contexts/auth/services/auth-service'
+import { clearAuthSessionExpired } from '../helpers/auth-events'
+
+type LoginLocationState = {
+   from?: {
+      pathname?: string
+   }
+   sessionExpired?: boolean
+}
 
 export default function PageLogin() {
    const navigate = useNavigate()
    const location = useLocation()
    const { login, isLoggingIn } = useLogin()
 
-   const from = (location.state?.from?.pathname as string) ?? '/'
+   const locationState = location.state as LoginLocationState | null
+   const fromLocation = locationState?.from
+   const from = fromLocation?.pathname ?? '/'
+   const sessionExpired = Boolean(locationState?.sessionExpired)
+
+   useEffect(() => {
+      if (!sessionExpired) return
+
+      toast.error('Sessão expirada. Por favor, faça login novamente.', {
+         id: 'session-expired',
+      })
+      clearAuthSessionExpired()
+      navigate(location.pathname, {
+         replace: true,
+         state: fromLocation ? { from: fromLocation } : null,
+      })
+   }, [fromLocation, location.pathname, navigate, sessionExpired])
 
    const {
       register,
@@ -29,7 +55,9 @@ export default function PageLogin() {
       try {
          await login(data)
          navigate(from, { replace: true })
-      } catch {
+      } catch (error) {
+         if (authErrorHandler.getReason(error) === 'NETWORK') return
+
          toast.error('E-mail ou senha inválidos')
       }
    }
@@ -52,6 +80,7 @@ export default function PageLogin() {
                      placeholder="admin@gallery.com"
                      error={errors.email?.message}
                      {...register('email')}
+                     value="admin@gallery.com"
                   />
                </div>
 
@@ -64,6 +93,7 @@ export default function PageLogin() {
                      placeholder="••••••"
                      error={errors.password?.message}
                      {...register('password')}
+                     value="123456"
                   />
                </div>
 

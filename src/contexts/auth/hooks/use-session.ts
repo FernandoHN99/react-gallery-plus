@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
+import type { User } from '../models/user'
 import { authService } from '../services/auth-service'
 
 const ONE_HOUR = 1000 * 60 * 60
 
 export default function useSession() {
-   const query = useQuery({
+   const query = useQuery<User | null>({
       queryKey: ['session'],
       queryFn: authService.getSession,
       staleTime: ONE_HOUR,
@@ -12,9 +13,11 @@ export default function useSession() {
       retry: false,
    })
 
+   const isAuthenticated = query.isSuccess && !!query.data?.id
+
    return {
       user: query.data ?? null,
       isLoadingSession: query.isPending,
-      isAuthenticated: query.isSuccess && query.data.id != null,
+      isAuthenticated,
    }
 }

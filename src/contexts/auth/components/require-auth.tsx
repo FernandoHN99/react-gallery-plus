@@ -1,8 +1,21 @@
+import { useQuery } from '@tanstack/react-query'
 import { Navigate, Outlet, useLocation } from 'react-router'
+import {
+   type AuthSessionExpiredEvent,
+   authSessionExpiredQueryKey,
+} from '../../../helpers/auth-events'
 import useSession from '../hooks/use-session'
 
 export default function RequireAuth() {
    const { isAuthenticated, isLoadingSession } = useSession()
+   const { data: sessionExpiredEvent } = useQuery<AuthSessionExpiredEvent | null>(
+      {
+         queryKey: authSessionExpiredQueryKey,
+         queryFn: () => null,
+         enabled: false,
+         initialData: null,
+      },
+   )
    const location = useLocation()
 
    if (isLoadingSession) {
@@ -14,7 +27,13 @@ export default function RequireAuth() {
    }
 
    if (!isAuthenticated) {
-      return <Navigate to="/login" state={{ from: location }} replace />
+      return (
+         <Navigate
+            to="/login"
+            state={{ from: location, sessionExpired: !!sessionExpiredEvent }}
+            replace
+         />
+      )
    }
 
    return <Outlet />
