@@ -1,82 +1,55 @@
 # AGENTS.md
 
+## Scope
+
+This file contains global guidance for the whole repository. More specific rules live near the code they describe:
+
+- `server/AGENTS.md`: backend runtime, database, static files, and build details
+- `server/auth/AGENTS.md`: backend authentication routes, JWT cookies, and error code contract
+- `src/AGENTS.md`: frontend app shell, providers, and routing
+- `src/helpers/AGENTS.md`: Axios clients, auth interceptor, refresh queue, and auth events
+- `src/contexts/AGENTS.md`: frontend domain context conventions for photos, albums, and shared schemas
+- `src/contexts/auth/AGENTS.md`: frontend authentication context, hooks, services, route guard, and login UX
+
 ## Commands
 
 ```bash
-pnpm dev            # frontend — http://localhost:5173
-pnpm dev-server     # backend watch — http://localhost:5799 (must run separately)
+pnpm dev            # frontend, http://localhost:5173
+pnpm dev-server     # backend watch, http://localhost:5799; run separately
 pnpm build          # runs build-server first, then vite build
-pnpm build-server   # tsc typecheck (tsconfig.server.json) + tsup bundle
+pnpm build-server   # tsc typecheck for server + tsup bundle
 pnpm lint           # ESLint
 ```
 
-No test suite. No typecheck script — type errors surface via `build-server` (server) or Vite build (frontend).
+There is no test suite. There is no standalone typecheck script. Server type errors surface through `pnpm build-server`; frontend type/build errors surface through `pnpm build`.
 
 ## Environment
 
-Copy `.env.example` → `.env`. Two vars required:
-```
+Copy `.env.example` to `.env`. Required variables:
+
+```txt
 VITE_API_URL=http://localhost:5799
 VITE_IMAGES_URL=http://localhost:5799/images
 ```
-Frontend and backend must run concurrently — frontend has no fallback/mock.
 
-## Architecture
+Frontend and backend must run concurrently. The frontend has no fallback/mock API.
 
-Full-stack monorepo. Frontend (Vite/React) and backend (Fastify) share the same `package.json`.
+## Project Shape
 
-**Backend** (`server/`):
-- Fastify on port 5799, built with `tsup` → `server/dist/main.js`
-- JSON file database via `DatabaseService`; images stored in `data/images/`
-- Static files served at `/images/` from `data/images/`
-- `tsconfig.server.json` is separate from the frontend tsconfigs — `moduleResolution: node`, not `bundler`
+This is a full-stack monorepo. The Vite/React frontend and Fastify backend share the same `package.json`.
 
-**Frontend** (`src/`):
-- Domain split: `src/contexts/photos/` and `src/contexts/albums/`
-- Each context has `models/`, `hooks/`, `components/`
-- Shared Zod schemas: `src/contexts/schemas.ts` (`photoNewFormSchema`, `photoEditSchema`)
-- Album-local schemas: `src/contexts/albums/schemas.ts`
-- HTTP client: `src/helpers/api.ts` — Axios instance (`api`) + `fetcher` helper for React Query
-
-**Routing** (in `src/App.tsx`):
-- `/` → `PageHome`
-- `/fotos/:id` → `PagePhotoDetails`
-- `/componentes` → `PageComponents`
-
-## Patterns
-
-**Mutations — always `useMutation`, never `useTransition`:**
-All async write operations (create, update, delete, manage albums) use `useMutation` from TanStack Query.
-- `mutationFn` holds the API call(s)
-- `onSuccess` handles `invalidateQueries` + `toast.success`
-- `onError` handles `toast.error`
-- `mutation.isPending` drives disabled/loading UI states
-- `mutateAsync` is used when the caller needs to await (e.g. closing a modal after save)
-- `mutate` is used for fire-and-forget (e.g. delete)
-
-**`managePhotoOnAlbumMutation`** (`use-photo-albums.ts`):
-- `mutationFn` receives `{ photoId, albumsIds }` (single object, not two args)
-- Used by `use-photo.ts`, `use-album.ts`, and `albums-list-selectable.tsx`
-
-**`invalidateQueries` vs `setQueryData`:**
-- This project uses `invalidateQueries` (refetch from server) — not optimistic updates
-
-**Validation:**
-- Forms use React Hook Form + `zodResolver`
-- Inline field errors derived from `safeParse` (not separate state)
-- `photoEditSchema` has both `title` (min 1, max 255) and `albumsIds` (required array)
+Keep documentation modular. Add or update the nearest applicable `AGENTS.md` instead of centralizing module-specific knowledge in this root file.
 
 ## Formatter
 
-Biome is the formatter and secondary linter (3-space indent, single quotes, no semicolons, trailing commas).
-ESLint handles React-specific rules. Both are active — run `pnpm lint` for ESLint; Biome runs via editor/CI.
+Biome is the formatter and secondary linter: 3-space indent, single quotes, no semicolons, trailing commas.
+
+ESLint handles React-specific rules. Run `pnpm lint` for ESLint. Biome runs through editor/CI.
 
 Biome ignores `src/components/ui/`.
 
-## Important Constraints
+## Commits
 
-**🚫 NEVER commit without user authorization.**
-- Stage files as needed
-- Show user the changes with `git diff` or `git status`
-- Wait for explicit approval before running `git commit`
-- If you've already committed, immediately undo with `git reset --soft HEAD~1` and `git reset HEAD`
+Never commit without explicit user authorization.
+
+Before committing, inspect `git status`, `git diff`, and recent commits. Stage only intended files and do not include unrelated local changes.
