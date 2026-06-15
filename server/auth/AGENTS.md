@@ -36,6 +36,7 @@ The frontend auth interceptor depends on these exact `code` values:
 MISSING_ACCESS_TOKEN
 TOKEN_EXPIRED
 INVALID_ACCESS_TOKEN
+MISSING_REFRESH_TOKEN
 REFRESH_TOKEN_EXPIRED
 INVALID_REFRESH_TOKEN
 ```
@@ -48,8 +49,9 @@ INVALID_REFRESH_TOKEN
 
 `verifyJwtRefreshToken()` returns:
 
+- `MISSING_REFRESH_TOKEN` when there is no refresh cookie.
 - `REFRESH_TOKEN_EXPIRED` when the refresh JWT cookie expired.
-- `INVALID_REFRESH_TOKEN` for missing, malformed, invalid, or otherwise untrusted refresh tokens.
+- `INVALID_REFRESH_TOKEN` for malformed, invalid, or otherwise untrusted refresh tokens.
 
 Treat `INVALID_REFRESH_TOKEN` as a suspicious/invalid auth state. The frontend expires the session immediately when it sees this code.
 

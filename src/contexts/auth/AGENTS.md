@@ -73,6 +73,6 @@ RequireAuth redirects to /login with sessionExpired=true
 PageLogin shows one toast and clears the event/state
 ```
 
-`NETWORK` is not a session-expired reason. It shows the global connectivity toast and rejects the request.
+`NETWORK` and `MISSING_REFRESH_TOKEN` are not session-expired reasons. `NETWORK` shows the global connectivity toast and rejects the request. `MISSING_REFRESH_TOKEN` represents a normal unauthenticated visit to a protected route and redirects to `/login` without showing the session-expired toast.
 
 `INVALID_REFRESH_TOKEN` is treated as an invalid/suspicious auth state and expires the session immediately. `REFRESH_TOKEN_EXPIRED` also expires the session. `MISSING_ACCESS_TOKEN` by itself is not shown to the user; it triggers the refresh path so a valid refresh cookie can recover the session.

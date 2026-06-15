@@ -33,6 +33,13 @@ export async function verifyJwtRefreshToken(
    request: FastifyRequest,
    reply: FastifyReply,
 ) {
+   if (!request.cookies.refreshToken) {
+      return reply.status(401).send({
+         code: 'MISSING_REFRESH_TOKEN',
+         message: 'Refresh token não informado',
+      })
+   }
+
    try {
       await request.refreshJwtVerify({ onlyCookie: true })
    } catch (error) {
