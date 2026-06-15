@@ -6,6 +6,7 @@ import { z } from 'zod'
 const envSchema = z.object({
    JWT_ACCESS_SECRET: z.string(),
    JWT_REFRESH_SECRET: z.string(),
+   FRONTEND_URL: z.string().url().optional(),
 })
 
 const _env = envSchema.safeParse(process.env)

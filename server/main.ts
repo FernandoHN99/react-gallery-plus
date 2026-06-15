@@ -18,6 +18,18 @@ import { ImageService } from './services/image-service'
 const start = async () => {
    const port = Number(process.env.PORT) || 5799
    const imagesDir = resolve(process.cwd(), 'data', 'images')
+   const normalizeOrigin = (origin: string) => {
+      try {
+         return new URL(origin).origin
+      } catch {
+         return origin
+      }
+   }
+   const allowedOrigins = new Set(
+      ['http://localhost:5173', 'http://127.0.0.1:5173', env.FRONTEND_URL]
+         .filter((origin): origin is string => Boolean(origin))
+         .map(normalizeOrigin),
+   )
 
    const fastify = Fastify({
       logger: true,
@@ -51,14 +63,18 @@ const start = async () => {
 
    await fastify.register(import('@fastify/cors'), {
       credentials: true,
-      // origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
       origin: (origin, cb) => {
          if (!origin) {
             cb(null, true)
             return
          }
 
-         cb(null, true)
+         if (allowedOrigins.has(normalizeOrigin(origin))) {
+            cb(null, true)
+            return
+         }
+
+         cb(new Error('Origin not allowed'), false)
       },
       methods: ['GET', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
