@@ -109,10 +109,6 @@ const start = async () => {
    await photosRoutes(fastify, photosService)
    await albumsRoutes(fastify, albumsService)
 
-   fastify.get('/', async (_, reply) => {
-      reply.send({ status: 'ok' })
-   })
-
    // Health check endpoint
    fastify.get('/health', async (_, reply) => {
       reply.send({ status: 'ok', timestamp: new Date().toISOString() })
