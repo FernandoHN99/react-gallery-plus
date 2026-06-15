@@ -7,6 +7,14 @@ export async function authRoutes(
    fastify: FastifyInstance,
    authService: AuthService,
 ) {
+   const isProduction =
+      process.env.NODE_ENV === 'production' || process.env.RENDER === 'true'
+   const refreshCookieOptions = {
+      path: '/',
+      sameSite: isProduction ? ('none' as const) : ('lax' as const),
+      secure: isProduction,
+   }
+
    // POST /auth/login
    fastify.post('/auth/login', async (request, reply) => {
       const body = loginSchema.safeParse(request.body)
@@ -24,8 +32,7 @@ export async function authRoutes(
 
          return reply
             .setCookie('refreshToken', refreshToken, {
-               path: '/',
-               sameSite: true,
+               ...refreshCookieOptions,
                httpOnly: true,
                maxAge: 7 * 24 * 60 * 60,
             })
@@ -62,7 +69,10 @@ export async function authRoutes(
 
    // POST /auth/logout
    fastify.post('/auth/logout', async (_, reply) => {
-      return reply.clearCookie('refreshToken', { path: '/' }).status(204).send()
+      return reply
+         .clearCookie('refreshToken', refreshCookieOptions)
+         .status(204)
+         .send()
    })
 
    // GET /auth/me

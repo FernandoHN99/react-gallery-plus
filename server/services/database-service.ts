@@ -29,7 +29,15 @@ export class DatabaseService {
             photos: [],
             albums: [],
             photosOnAlbums: [],
-            users: [],
+            users: [
+               {
+                  id: 'demo-admin-user',
+                  email: 'admin@gallery.com',
+                  passwordHash:
+                     '$2b$10$otwWLKOBYBiow1PCICpAl.hExs7sKYdv4EPiiYQg/s6hdA0k5c0Dq',
+                  createdAt: new Date().toISOString(),
+               },
+            ],
          }
          await this.writeDatabase(initialData)
       }
