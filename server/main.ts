@@ -54,7 +54,7 @@ const start = async () => {
       // origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
       origin: (origin, cb) => {
          if (!origin) {
-            cb(new Error('Origin must be provided'), false)
+            cb(null, true)
             return
          }
 
@@ -92,6 +92,10 @@ const start = async () => {
    await authRoutes(fastify, authService)
    await photosRoutes(fastify, photosService)
    await albumsRoutes(fastify, albumsService)
+
+   fastify.get('/', async (_, reply) => {
+      reply.send({ status: 'ok' })
+   })
 
    // Health check endpoint
    fastify.get('/health', async (_, reply) => {
