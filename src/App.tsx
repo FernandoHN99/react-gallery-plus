@@ -8,6 +8,7 @@ import LayoutMain from './pages/layout-main'
 import PageComponents from './pages/page-components'
 import PageHome from './pages/page-home'
 import PageLogin from './pages/page-login'
+import PageNotFound from './pages/page-not-found'
 import PagePhotoDetails from './pages/page-photo-details'
 
 const queryClient = new QueryClient()
@@ -28,6 +29,7 @@ export default function App() {
                         <Route path="/componentes" element={<PageComponents />} />
                      </Route>
                   </Route>
+                  <Route path="*" element={<PageNotFound />} />
                </Routes>
             </BrowserRouter>
          </NuqsAdapter>
